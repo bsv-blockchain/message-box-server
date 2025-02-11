@@ -3,7 +3,7 @@ import listMessages from '../listMessages'
 import mockKnex, { getTracker, Tracker } from 'mock-knex'
 import { Request, Response } from 'express'
 
-// ✅ Define Request Type
+// Define Request Type
 interface AuthriteRequest extends Request {
   authrite: {
     identityKey: string
@@ -13,7 +13,7 @@ interface AuthriteRequest extends Request {
   }
 }
 
-// ✅ Mock Express Response Object
+// Mock Express Response Object
 const mockRes: Partial<Response> = {
   status: jest.fn().mockReturnThis(),
   json: jest.fn().mockReturnThis()
@@ -32,7 +32,7 @@ describe('listMessages', () => {
       throw e
     })
 
-    // ✅ Set up mock DB tracking
+    // Set up mock DB tracking
     mockKnex.mock(listMessages.knex)
     queryTracker = getTracker()
     queryTracker.install()
@@ -43,7 +43,7 @@ describe('listMessages', () => {
       body: '{}'
     }]
 
-    // ✅ Mock Data
+    // Mock Data
     validRes = {
       status: 'success',
       messages: validMessages
@@ -53,7 +53,7 @@ describe('listMessages', () => {
       { messageBoxId: 31 }
     ]
 
-    // ✅ Fully typed mock request
+    // Fully typed mock request
     validReq = {
       authrite: {
         identityKey: 'mockIdKey'

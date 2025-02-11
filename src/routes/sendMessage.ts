@@ -19,7 +19,7 @@ interface Message {
 
 interface SendMessageRequest extends Request {
   authrite: { identityKey: string }
-  body: { message?: Message } // ✅ Now message can be missing
+  body: { message?: Message }
 }
 
 export default {

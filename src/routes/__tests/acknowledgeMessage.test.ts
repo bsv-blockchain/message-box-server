@@ -39,9 +39,9 @@ describe('acknowledgeMessage', () => {
         identityKey: 'mockIdKey'
       },
       body: {
-        messageIds: ['123'] // ✅ Ensure messageIds is a string array
+        messageIds: ['123']
       },
-      get: jest.fn(), // ✅ Mocks Express Request methods
+      get: jest.fn(),
       header: jest.fn()
     } as unknown as AuthriteRequest
   })
@@ -63,7 +63,7 @@ describe('acknowledgeMessage', () => {
   })
 
   it('Throws an error if messageIds is not an Array', async () => {
-    validReq.body.messageIds = ['24'] // ✅ Ensure array of strings
+    validReq.body.messageIds = ['24']
     await acknowledgeMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
