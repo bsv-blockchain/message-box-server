@@ -1,13 +1,11 @@
 {
-    "extends": "./tsconfig.base.json",
-    "compilerOptions": {
-      "rootDir": "./src",
-      "baseUrl": "./",
-      "outDir": "./dist/types",
-      "emitDeclarationOnly": true,
-      "declaration": true,
-      "declarationMap": true,
-      "composite": true
-    }
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./",
+    "baseUrl": "./",
+    "outDir": "./dist/types",
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "declarationMap": true
   }
-  
+}
