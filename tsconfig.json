@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "esModuleInterop": true,
+    "strictNullChecks": true,
+    "composite": true
+  },
+  "references": [
+    { "path": "tsconfig.esm.json" },
+    { "path": "tsconfig.cjs.json" },
+    { "path": "tsconfig.types.json" }
+  ],
+  "include": ["src"],
+  "exclude": ["dist", "node_modules"]
+}
