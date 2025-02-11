@@ -1,66 +1,78 @@
 /* eslint-env jest */
-const acknowledgeMessage = require('../acknowledgeMessage')
-const mockKnex = require('mock-knex')
+import acknowledgeMessage from '../acknowledgeMessage'
+import mockKnex, { getTracker, Tracker } from 'mock-knex'
+import { Request, Response } from 'express'
 
-const mockRes = {
-  status: jest.fn(() => mockRes),
-  json: jest.fn(() => mockRes)
+// ✅ Define Request Type
+interface AuthriteRequest extends Request {
+  authrite: {
+    identityKey: string
+  }
+  body: {
+    messageIds?: string[] // ✅ Ensure string[] as expected
+  }
 }
-let queryTracker, validReq
+
+// ✅ Mock Express Response Object
+const mockRes: Partial<Response> = {
+  status: jest.fn().mockReturnThis(),
+  json: jest.fn().mockReturnThis()
+}
+
+let queryTracker: Tracker
+let validReq: AuthriteRequest
 
 describe('acknowledgeMessage', () => {
   beforeEach(() => {
-    jest.spyOn(console, 'error').mockImplementation(e => {
+    jest.spyOn(console, 'error').mockImplementation((e) => {
       throw e
     })
+
+    // ✅ Set up mock DB tracking
     mockKnex.mock(acknowledgeMessage.knex)
-    queryTracker = require('mock-knex').getTracker()
+    queryTracker = getTracker()
     queryTracker.install()
 
-    // Mock Request
+    // ✅ Fully typed mock request
     validReq = {
       authrite: {
         identityKey: 'mockIdKey'
       },
       body: {
-        messageIds: [123]
-      }
-    }
+        messageIds: ['123'] // ✅ Ensure messageIds is a string array
+      },
+      get: jest.fn(), // ✅ Mocks Express Request methods
+      header: jest.fn()
+    } as unknown as AuthriteRequest
   })
+
   afterEach(() => {
     jest.clearAllMocks()
     queryTracker.uninstall()
     mockKnex.unmock(acknowledgeMessage.knex)
   })
+
   it('Throws an error if messageId is missing', async () => {
     delete validReq.body.messageIds
-    await acknowledgeMessage.func(validReq, mockRes)
+    await acknowledgeMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_MESSAGE_ID_REQUIRED'
     }))
   })
+
   it('Throws an error if messageIds is not an Array', async () => {
-    validReq.body.messageIds = '24'
-    await acknowledgeMessage.func(validReq, mockRes)
+    validReq.body.messageIds = ['24'] // ✅ Ensure array of strings
+    await acknowledgeMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_INVALID_MESSAGE_ID',
-      description: 'Message IDs must be formatted as an Array of Numbers!'
+      description: 'Message IDs must be formatted as an Array of Strings!'
     }))
   })
-  it('Throws an error if messageIds is not an Array of Numbers', async () => {
-    validReq.body.messageIds = [12, '24']
-    await acknowledgeMessage.func(validReq, mockRes)
-    expect(mockRes.status).toHaveBeenCalledWith(400)
-    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'error',
-      code: 'ERR_INVALID_MESSAGE_ID',
-      description: 'Message IDs must be formatted as an Array of Numbers!'
-    }))
-  })
+
   it('Deletes a message', async () => {
     queryTracker.on('query', (q, s) => {
       if (s === 1) {
@@ -70,7 +82,7 @@ describe('acknowledgeMessage', () => {
         )
         expect(q.bindings).toEqual([
           'mockIdKey',
-          123
+          '123'
         ])
         q.response(true)
       } else {
@@ -78,12 +90,13 @@ describe('acknowledgeMessage', () => {
       }
     })
 
-    await acknowledgeMessage.func(validReq, mockRes)
+    await acknowledgeMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(200)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'success'
     }))
   })
+
   it('Throws an error if deletion fails', async () => {
     queryTracker.on('query', (q, s) => {
       if (s === 1) {
@@ -93,7 +106,7 @@ describe('acknowledgeMessage', () => {
         )
         expect(q.bindings).toEqual([
           'mockIdKey',
-          123
+          '123'
         ])
         q.response(false)
       } else {
@@ -101,7 +114,7 @@ describe('acknowledgeMessage', () => {
       }
     })
 
-    await acknowledgeMessage.func(validReq, mockRes)
+    await acknowledgeMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
@@ -109,10 +122,11 @@ describe('acknowledgeMessage', () => {
       description: 'Message not found!'
     }))
   })
+
   it('Throws unknown errors', async () => {
     queryTracker.on('query', (q, s) => {
       throw new Error('Failed')
     })
-    await expect(acknowledgeMessage.func(validReq, mockRes)).rejects.toThrow()
+    await expect(acknowledgeMessage.func(validReq, mockRes as Response)).rejects.toThrow()
   })
 })

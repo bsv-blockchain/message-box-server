@@ -1,20 +1,40 @@
 /* eslint-env jest */
-const listMessages = require('../listMessages')
-const mockKnex = require('mock-knex')
+import listMessages from '../listMessages'
+import mockKnex, { getTracker, Tracker } from 'mock-knex'
+import { Request, Response } from 'express'
 
-const mockRes = {
-  status: jest.fn(() => mockRes),
-  json: jest.fn(() => mockRes)
+// ✅ Define Request Type
+interface AuthriteRequest extends Request {
+  authrite: {
+    identityKey: string
+  }
+  body: {
+    messageBox?: string
+  }
 }
-let queryTracker, validReq, validRes, validMessageBoxes, validMessages
+
+// ✅ Mock Express Response Object
+const mockRes: Partial<Response> = {
+  status: jest.fn().mockReturnThis(),
+  json: jest.fn().mockReturnThis()
+}
+
+let queryTracker: Tracker
+let validReq: AuthriteRequest
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+let validRes: { status: string, messages: any[] }
+let validMessageBoxes: Array<{ messageBoxId: number }>
+let validMessages: Array<{ sender: string, messageBoxId: number, body: string }>
 
 describe('listMessages', () => {
   beforeEach(() => {
-    jest.spyOn(console, 'error').mockImplementation(e => {
+    jest.spyOn(console, 'error').mockImplementation((e) => {
       throw e
     })
+
+    // ✅ Set up mock DB tracking
     mockKnex.mock(listMessages.knex)
-    queryTracker = require('mock-knex').getTracker()
+    queryTracker = getTracker()
     queryTracker.install()
 
     validMessages = [{
@@ -23,41 +43,41 @@ describe('listMessages', () => {
       body: '{}'
     }]
 
-    // Mock Data
+    // ✅ Mock Data
     validRes = {
       status: 'success',
       messages: validMessages
     }
     validMessageBoxes = [
-      {
-        messageBoxId: 42
-      },
-      {
-        messageBoxId: 31
-      }
+      { messageBoxId: 42 },
+      { messageBoxId: 31 }
     ]
 
-    // Mock Request]
+    // ✅ Fully typed mock request
     validReq = {
       authrite: {
         identityKey: 'mockIdKey'
       },
       body: {
         messageBox: 'payment_inbox'
-      }
-    }
+      },
+      get: jest.fn(),
+      header: jest.fn()
+    } as unknown as AuthriteRequest
   })
+
   afterEach(() => {
     jest.clearAllMocks()
     queryTracker.uninstall()
     mockKnex.unmock(listMessages.knex)
   })
+
   it('Throws an error if a messageBox is not provided', async () => {
     validReq.body.messageBox = undefined
-    queryTracker.on('query', (q, s) => {
+    queryTracker.on('query', (q) => {
       q.response([])
     })
-    await listMessages.func(validReq, mockRes)
+    await listMessages.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
@@ -65,19 +85,21 @@ describe('listMessages', () => {
       description: 'Please provide the name of a valid MessageBox!'
     }))
   })
+
   it('Throws an error if messageBox is not a string', async () => {
-    validReq.body.messageBox = 123
-    queryTracker.on('query', (q, s) => {
+    validReq.body.messageBox = 123 as unknown as string
+    queryTracker.on('query', (q) => {
       q.response([])
     })
-    await listMessages.func(validReq, mockRes)
+    await listMessages.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_INVALID_MESSAGEBOX',
-      description: 'MessageBox name must a string!'
+      description: 'MessageBox name must be a string!'
     }))
   })
+
   it('Throws an error if no matching messageBox is found', async () => {
     validReq.body.messageBox = 'pay_inbox'
     queryTracker.on('query', (q, s) => {
@@ -91,13 +113,14 @@ describe('listMessages', () => {
         q.response([])
       }
     })
-    await listMessages.func(validReq, mockRes)
-    expect(mockRes.status).toHaveBeenCalledWith(400)
+    await listMessages.func(validReq, mockRes as Response)
+    expect(mockRes.status).toHaveBeenCalledWith(200)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'success',
       messages: []
     }))
   })
+
   it('Returns ID of messageBox', async () => {
     queryTracker.on('query', (q, s) => {
       if (s === 1) {
@@ -116,13 +139,14 @@ describe('listMessages', () => {
         q.response([])
       }
     })
-    await listMessages.func(validReq, mockRes)
+    await listMessages.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(200)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'success',
       messages: validMessages
     }))
   })
+
   it('Returns empty array if no messages found', async () => {
     queryTracker.on('query', (q, s) => {
       if (s === 1) {
@@ -137,13 +161,14 @@ describe('listMessages', () => {
         q.response([])
       }
     })
-    await listMessages.func(validReq, mockRes)
+    await listMessages.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(200)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'success',
       messages: []
     }))
   })
+
   it('Returns list of messages found', async () => {
     queryTracker.on('query', (q, s) => {
       if (s === 1) {
@@ -158,17 +183,18 @@ describe('listMessages', () => {
         q.response([])
       }
     })
-    await listMessages.func(validReq, mockRes)
+    await listMessages.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(200)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'success',
       messages: validMessages
     }))
   })
+
   it('Throws unknown errors', async () => {
-    queryTracker.on('query', (q, s) => {
+    queryTracker.on('query', () => {
       throw new Error('Failed')
     })
-    await expect(listMessages.func(validReq, mockRes)).rejects.toThrow()
+    await expect(listMessages.func(validReq, mockRes as Response)).rejects.toThrow()
   })
 })

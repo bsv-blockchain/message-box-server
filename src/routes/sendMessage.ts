@@ -1,12 +1,28 @@
-const {
-  NODE_ENV
-} = process.env
-const knex =
-  NODE_ENV === 'production' || NODE_ENV === 'staging'
-    ? require('knex')(require('../../knexfile.js').production)
-    : require('knex')(require('../../knexfile.js').development)
+import { Request, Response } from 'express'
+import knexConfig from '../../knexfile'
+import knexLib from 'knex'
 
-module.exports = {
+const { NODE_ENV = 'development' } = process.env
+
+const knex = knexLib(
+  NODE_ENV === 'production' || NODE_ENV === 'staging'
+    ? knexConfig.production
+    : knexConfig.development
+)
+
+interface Message {
+  recipient: string
+  messageBox: string
+  messageId: string
+  body: string
+}
+
+interface SendMessageRequest extends Request {
+  authrite: { identityKey: string }
+  body: { message?: Message } // ✅ Now message can be missing
+}
+
+export default {
   type: 'post',
   path: '/sendMessage',
   knex,
@@ -22,66 +38,47 @@ module.exports = {
   exampleResponse: {
     status: 'success'
   },
-  func: async (req, res) => {
+  func: async (req: SendMessageRequest, res: Response): Promise<Response> => {
     try {
+      const { message } = req.body
+
       // Request Body Validation
-      if (!req.body.message) {
+      if (message == null) {
         return res.status(400).json({
           status: 'error',
           code: 'ERR_MESSAGE_REQUIRED',
           description: 'Please provide a valid message to send!'
         })
       }
-      if (typeof req.body.message !== 'object') {
+      if (typeof message !== 'object') {
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_MESSAGE',
           description: 'Message properties must be contained in a message object!'
         })
       }
-      if (!req.body.message.recipient) {
-        return res.status(400).json({
-          status: 'error',
-          code: 'ERR_RECIPIENT_REQUIRED',
-          description: 'Please provide a recipient to send the message to!'
-        })
-      }
-      if (typeof req.body.message.recipient !== 'string') {
+      if (message.recipient === undefined || message.recipient === null || typeof message.recipient !== 'string' || message.recipient.trim() === '') {
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_RECIPIENT',
           description: 'Recipient must be a compressed public key formatted as a hex string!'
         })
       }
-      if (typeof req.body.message.messageId !== 'string') {
+      if (message.messageId === undefined || message.messageId === null || typeof message.messageId !== 'string') {
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_MESSAGEID',
-          description: 'Please provide a unique counterparty specific messageID!'
+          description: 'Please provide a unique counterparty-specific messageID!'
         })
       }
-      if (!req.body.message.messageBox) {
-        return res.status(400).json({
-          status: 'error',
-          code: 'ERR_MESSAGEBOX_REQUIRED',
-          description: 'Please provide a messageBox to send this message into!'
-        })
-      }
-      if (typeof req.body.message.messageBox !== 'string') {
+      if (message.messageBox === undefined || message.messageBox === null || typeof message.messageBox !== 'string') {
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_MESSAGEBOX',
           description: 'MessageBox must be a string!'
         })
       }
-      if (!req.body.message.body) {
-        return res.status(400).json({
-          status: 'error',
-          code: 'ERR_MESSAGE_BODY_REQUIRED',
-          description: 'Every message must contain a body!'
-        })
-      }
-      if (typeof req.body.message.body !== 'string') {
+      if (message.body === undefined || message.body === null || typeof message.body !== 'string') {
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_MESSAGE_BODY',
@@ -90,42 +87,53 @@ module.exports = {
       }
 
       // Select the message box to send this message to
+      // eslint-disable-next-line prefer-const
       let messageBox = await knex('messageBox')
         .where({
-          identityKey: req.body.message.recipient,
-          type: req.body.message.messageBox
-        }).update({
-          updated_at: new Date()
+          identityKey: message.recipient,
+          type: message.messageBox
         })
-      // If this messageBox does not exist yet, create it.
-      if (!messageBox) {
+        .update({ updated_at: new Date() })
+
+      // If this messageBox does not exist yet, create it
+      if (messageBox === undefined || messageBox === 0) {
         await knex('messageBox').insert({
-          identityKey: req.body.message.recipient,
-          type: req.body.message.messageBox,
+          identityKey: message.recipient,
+          type: message.messageBox,
           created_at: new Date(),
           updated_at: new Date()
         })
       }
 
       // Select the newly updated/created messageBox Id
-      [messageBox] = await knex('messageBox').where({
-        identityKey: req.body.message.recipient,
-        type: req.body.message.messageBox
-      }).select('messageBoxId')
+      const [messageBoxRecord] = await knex('messageBox')
+        .where({
+          identityKey: message.recipient,
+          type: message.messageBox
+        })
+        .select('messageBoxId')
+
+      // Ensure messageBox exists before inserting the message
+      if (messageBoxRecord === undefined || messageBoxRecord === null) {
+        return res.status(400).json({
+          status: 'error',
+          code: 'ERR_MESSAGEBOX_NOT_FOUND',
+          description: 'The specified messageBox does not exist.'
+        })
+      }
 
       // Insert the new message
-      // Note: Additional encryption could be enforced here
       try {
         await knex('messages').insert({
-          messageId: req.body.message.messageId,
-          messageBoxId: messageBox.messageBoxId, // Foreign key
+          messageId: message.messageId,
+          messageBoxId: messageBoxRecord.messageBoxId, // Foreign key
           sender: req.authrite.identityKey,
-          recipient: req.body.message.recipient,
-          body: req.body.message.body, // Should a buffer be supported in the future?
+          recipient: message.recipient,
+          body: message.body,
           created_at: new Date(),
           updated_at: new Date()
         })
-      } catch (error) {
+      } catch (error: any) {
         if (error.code === 'ER_DUP_ENTRY') {
           return res.status(400).json({
             status: 'error',
@@ -138,12 +146,12 @@ module.exports = {
 
       return res.status(200).json({
         status: 'success',
-        message: `Your message has been sent to ${req.body.message.recipient}`
+        message: `Your message has been sent to ${message.recipient}`
       })
     } catch (e) {
       console.error(e)
-      if (global.Bugsnag) global.Bugsnag.notify(e)
-      res.status(500).json({
+      if (globalThis.Bugsnag != null) globalThis.Bugsnag.notify(e)
+      return res.status(500).json({
         status: 'error',
         code: 'ERR_INTERNAL',
         description: 'An internal error has occurred.'

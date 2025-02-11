@@ -9,11 +9,11 @@
     "strictNullChecks": true
   },
   "include": [
-    "./src/**/*.{ts,tsx,js,jsx}",   // ✅ Keep this if your TypeScript files are in src/
-    "./eslint.config.js",  // ✅ Adjusted path to be at root
-    "./jest.config.js",    // ✅ Adjusted path to be at root
+    "./src/**/*.{ts,tsx,js,jsx}",
+    "./eslint.config.js",
+    "./jest.config.js",
     "./**/*.js", 
     "./**/*.ts",
-    "./*.ts"               // ✅ Ensures any root-level TS files are included (optional)
+    "./*.ts"
   ]
 }

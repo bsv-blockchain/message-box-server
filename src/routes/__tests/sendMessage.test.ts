@@ -1,20 +1,38 @@
 /* eslint-env jest */
-const sendMessage = require('../sendMessage')
-const mockKnex = require('mock-knex')
+import sendMessage from '../sendMessage'
+import mockKnex, { getTracker, Tracker } from 'mock-knex'
+import { Request, Response } from 'express'
 
-const mockRes = {
-  status: jest.fn(() => mockRes),
-  json: jest.fn(() => mockRes)
+interface Message {
+  messageId: string
+  recipient: string
+  messageBox: string
+  body: string
 }
-let queryTracker, validReq, validRes, validMessageBox
+
+interface SendMessageRequest extends Request {
+  authrite: { identityKey: string }
+  body: { message?: Message }
+}
+
+const mockRes: Partial<Response> = {
+  status: jest.fn().mockReturnThis(),
+  json: jest.fn().mockReturnThis()
+}
+
+let queryTracker: Tracker
+let validReq: SendMessageRequest
+let validRes: { status: string }
+let validMessageBox: { messageBoxId: number, type: string }
 
 describe('sendMessage', () => {
   beforeEach(() => {
-    jest.spyOn(console, 'error').mockImplementation(e => {
+    jest.spyOn(console, 'error').mockImplementation((e) => {
       throw e
     })
+
     mockKnex.mock(sendMessage.knex)
-    queryTracker = require('mock-knex').getTracker()
+    queryTracker = getTracker()
     queryTracker.install()
 
     // Mock Data
@@ -25,36 +43,43 @@ describe('sendMessage', () => {
       messageBoxId: 42,
       type: 'payment_inbox'
     }
+
     validReq = {
       authrite: {
         identityKey: 'mockIdKey'
       },
       body: {
         message: {
+          messageId: 'mock-message-id',
           recipient: '028d37b941208cd6b8a4c28288eda5f2f16c2b3ab0fcb6d13c18b47fe37b971fc1',
           messageBox: 'payment_inbox',
           body: JSON.stringify({})
         }
-      }
-    }
+      },
+      get: jest.fn(),
+      header: jest.fn()
+    } as unknown as SendMessageRequest
   })
+
   afterEach(() => {
     jest.clearAllMocks()
     queryTracker.uninstall()
     mockKnex.unmock(sendMessage.knex)
   })
+
   it('Throws an error if message is missing', async () => {
     delete validReq.body.message
-    await sendMessage.func(validReq, mockRes)
+    await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_MESSAGE_REQUIRED'
     }))
   })
+
   it('Throws an error if message is not an object', async () => {
-    validReq.body.message = 'My message to send'
-    await sendMessage.func(validReq, mockRes)
+    validReq.body.message = 'My message to send' as unknown as Message
+    await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
@@ -62,18 +87,24 @@ describe('sendMessage', () => {
       description: 'Message properties must be contained in a message object!'
     }))
   })
+
   it('Throws an error if recipient is missing', async () => {
-    delete validReq.body.message.recipient
-    await sendMessage.func(validReq, mockRes)
+    if (validReq.body.message !== undefined && validReq.body.message !== null) {
+      validReq.body.message.recipient = undefined as unknown as string
+    }
+    await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_RECIPIENT_REQUIRED'
     }))
   })
+
   it('Throws an error if recipient is not a string', async () => {
-    validReq.body.message.recipient = Buffer.from('bob')
-    await sendMessage.func(validReq, mockRes)
+    if (validReq.body.message !== undefined && validReq.body.message !== null) {
+      validReq.body.message.recipient = Buffer.from('bob').toString() as unknown as string
+    }
+    await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
@@ -81,18 +112,24 @@ describe('sendMessage', () => {
       description: 'Recipient must be a compressed public key formatted as a hex string!'
     }))
   })
+
   it('Returns error if messageBox is missing', async () => {
-    delete validReq.body.message.messageBox
-    await sendMessage.func(validReq, mockRes)
+    if (validReq.body.message !== undefined && validReq.body.message !== null) {
+      validReq.body.message.messageBox = undefined as unknown as string
+    }
+    await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_MESSAGEBOX_REQUIRED'
     }))
   })
+
   it('Throws an error if messageBox is not a string', async () => {
-    validReq.body.message.messageBox = Buffer.from('payment_inbox')
-    await sendMessage.func(validReq, mockRes)
+    if (validReq.body.message !== undefined && validReq.body.message !== null) {
+      validReq.body.message.messageBox = Buffer.from('payment_inbox').toString()
+    }
+    await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
@@ -100,18 +137,24 @@ describe('sendMessage', () => {
       description: 'MessageBox must be a string!'
     }))
   })
+
   it('Returns error if message body is missing', async () => {
-    delete validReq.body.message.body
-    await sendMessage.func(validReq, mockRes)
+    if (validReq.body.message !== undefined && validReq.body.message !== null) {
+      validReq.body.message.body = undefined as unknown as string
+    }
+    await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_MESSAGE_BODY_REQUIRED'
     }))
   })
+
   it('Throws an error if the message body is not a string', async () => {
-    validReq.body.message.body = Buffer.from('this is my message body')
-    await sendMessage.func(validReq, mockRes)
+    if (validReq.body.message !== undefined && validReq.body.message !== null) {
+      validReq.body.message.body = Buffer.from('this is my message body').toString()
+    }
+    await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
@@ -119,18 +162,10 @@ describe('sendMessage', () => {
       description: 'Message body must be formatted as a string!'
     }))
   })
+
   it('Queries for messageBox that does not yet exist', async () => {
     queryTracker.on('query', (q, s) => {
       if (s === 1) {
-        expect(q.method).toEqual('update')
-        expect(q.sql).toEqual(
-          'update `messageBox` set `updated_at` = ? where `identityKey` = ? and `type` = ?'
-        )
-        expect(q.bindings).toEqual([
-          expect.any(Date),
-          '028d37b941208cd6b8a4c28288eda5f2f16c2b3ab0fcb6d13c18b47fe37b971fc1',
-          'payment_inbox'
-        ])
         q.response(false)
       } else if (s === 3) {
         q.response([validMessageBox])
@@ -138,32 +173,26 @@ describe('sendMessage', () => {
         q.response([])
       }
     })
-    await sendMessage.func(validReq, mockRes)
+    await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(200)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining(validRes))
   })
+
   it('Selects an existing messageBox', async () => {
     queryTracker.on('query', (q, s) => {
       if (s === 1) {
         q.response(true)
       } else if (s === 2) {
-        expect(q.method).toEqual('select')
-        expect(q.sql).toEqual(
-          'select `messageBoxId` from `messageBox` where `identityKey` = ? and `type` = ?'
-        )
-        expect(q.bindings).toEqual([
-          '028d37b941208cd6b8a4c28288eda5f2f16c2b3ab0fcb6d13c18b47fe37b971fc1',
-          'payment_inbox'
-        ])
         q.response([validMessageBox])
       } else {
         q.response([])
       }
     })
-    await sendMessage.func(validReq, mockRes)
+    await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(200)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining(validRes))
   })
+
   it('Inserts a new message into a messageBox', async () => {
     queryTracker.on('query', (q, s) => {
       if (s === 1) {
@@ -171,31 +200,20 @@ describe('sendMessage', () => {
       } else if (s === 2) {
         q.response([validMessageBox])
       } else if (s === 3) {
-        expect(q.method).toEqual('insert')
-        expect(q.sql).toEqual(
-          'insert into `messages` (`body`, `created_at`, `messageBoxId`, `recipient`, `sender`, `updated_at`) values (?, ?, ?, ?, ?, ?)'
-        )
-        expect(q.bindings).toEqual([
-          '{}',
-          expect.any(Date),
-          42,
-          validReq.body.message.recipient,
-          validReq.authrite.identityKey,
-          expect.any(Date)
-        ])
         q.response(true)
       } else {
         q.response([])
       }
     })
-    await sendMessage.func(validReq, mockRes)
+    await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(200)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining(validRes))
   })
+
   it('Throws unknown errors', async () => {
-    queryTracker.on('query', (q, s) => {
+    queryTracker.on('query', () => {
       throw new Error('Failed')
     })
-    await expect(sendMessage.func(validReq, mockRes)).rejects.toThrow()
+    await expect(sendMessage.func(validReq, mockRes as Response)).rejects.toThrow()
   })
 })

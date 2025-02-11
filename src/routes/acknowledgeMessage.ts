@@ -1,13 +1,21 @@
+import { Request, Response } from 'express'
+import knexConfig from '../../knexfile'
+import knexLib from 'knex'
 
-const {
-  NODE_ENV
-} = process.env
-const knex =
+const { NODE_ENV = 'development' } = process.env
+
+const knex = knexLib(
   NODE_ENV === 'production' || NODE_ENV === 'staging'
-    ? require('knex')(require('../../knexfile.js').production)
-    : require('knex')(require('../../knexfile.js').development)
+    ? knexConfig.production
+    : knexConfig.development
+)
 
-module.exports = {
+export interface AcknowledgeRequest extends Request {
+  authrite: { identityKey: string }
+  body: { messageIds?: string[] }
+}
+
+export default {
   type: 'post',
   path: '/acknowledgeMessage',
   knex,
@@ -19,17 +27,20 @@ module.exports = {
     status: 'success'
   },
   errors: [],
-  func: async (req, res) => {
+  func: async (req: AcknowledgeRequest, res: Response): Promise<Response> => {
     try {
+      const { messageIds } = req.body
+
       // Validate request body
-      if (!req.body.messageIds || (Array.isArray(req.body.messageIds) && req.body.messageIds.length === 0)) {
+      if ((messageIds == null) || (Array.isArray(messageIds) && messageIds.length === 0)) {
         return res.status(400).json({
           status: 'error',
           code: 'ERR_MESSAGE_ID_REQUIRED',
           description: 'Please provide the ID of the message(s) to acknowledge!'
         })
       }
-      if (!Array.isArray(req.body.messageIds) || req.body.messageIds.some(x => typeof x !== 'string')) {
+
+      if (!Array.isArray(messageIds) || messageIds.some(id => typeof id !== 'string')) {
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_MESSAGE_ID',
@@ -38,21 +49,20 @@ module.exports = {
       }
 
       // The server removes the message after it has been acknowledged
-      const deleted = await knex('messages').where({
-        recipient: req.authrite.identityKey
-      }).whereIn('messageId', req.body.messageIds).del()
+      const deleted = await knex('messages')
+        .where({ recipient: req.authrite.identityKey })
+        .whereIn('messageId', messageIds)
+        .del()
 
-      if (!deleted) {
-        // Would this ever happen?
+      if (deleted === 0 || isNaN(deleted)) {
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_ACKNOWLEDGMENT',
           description: 'Message not found!'
         })
       }
-      return res.status(200).json({
-        status: 'success'
-      })
+
+      return res.status(200).json({ status: 'success' })
     } catch (e) {
       console.error(e)
       return res.status(500).json({
