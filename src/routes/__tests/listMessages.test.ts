@@ -4,11 +4,11 @@ import mockKnex from 'mock-knex'
 import { Response } from 'express'
 import { AuthriteRequestMB } from '../../utils/testingInterfaces'
 
-// ✅ Ensure proper handling of mock-knex
+// Ensure proper handling of mock-knex
 const knex = listMessages.knex
 let queryTracker: mockKnex.Tracker
 
-// ✅ Define Mock Express Response Object
+// Define Mock Express Response Object
 const mockRes: Partial<Response> = {
   status: jest.fn().mockReturnThis(),
   json: jest.fn().mockReturnThis()
@@ -22,7 +22,6 @@ let validMessages: Array<{ sender: string, messageBoxId: number, body: string }>
 
 describe('listMessages', () => {
   beforeAll(() => {
-    // ✅ Ensure mockKnex is correctly initialized
     mockKnex.mock(knex)
   })
 
@@ -31,7 +30,6 @@ describe('listMessages', () => {
       throw e
     })
 
-    // ✅ Get tracker and install it
     queryTracker = mockKnex.getTracker() as mockKnex.Tracker
     queryTracker.install()
 
@@ -73,7 +71,6 @@ describe('listMessages', () => {
   })
 
   afterAll(() => {
-    // ✅ Unmock knex only once after all tests
     mockKnex.unmock(knex)
   })
 

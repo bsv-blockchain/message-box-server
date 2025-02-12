@@ -71,13 +71,20 @@ export default {
           description: 'Please provide a unique counterparty-specific messageID!'
         })
       }
-      if (message.messageBox === undefined || message.messageBox === null || typeof message.messageBox !== 'string') {
+      if (message.body === undefined || message.body === null) {
+        return res.status(400).json({
+          status: 'error',
+          code: 'ERR_MESSAGE_BODY_REQUIRED',
+          description: 'Message body is required!'
+        })
+      } else if (typeof message.messageBox !== 'string') {
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_MESSAGEBOX',
           description: 'MessageBox must be a string!'
         })
       }
+
       if (message.body === undefined || message.body === null || typeof message.body !== 'string') {
         return res.status(400).json({
           status: 'error',
@@ -88,7 +95,7 @@ export default {
 
       // Select the message box to send this message to
       // eslint-disable-next-line prefer-const
-      let messageBox = await knex('messageBox')
+      const messageBox = await knex('messageBox')
         .where({
           identityKey: message.recipient,
           type: message.messageBox

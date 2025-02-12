@@ -4,11 +4,11 @@ import mockKnex from 'mock-knex'
 import { AuthriteRequest } from '../../utils/testingInterfaces'
 import { Response } from 'express'
 
-// ✅ Ensure proper handling of mock-knex
+// Ensure proper handling of mock-knex
 const knex = acknowledgeMessage.knex
 let queryTracker: mockKnex.Tracker
 
-// ✅ Define Mock Express Response Object
+// Define Mock Express Response Object
 const mockRes: Partial<Response> = {
   status: jest.fn().mockReturnThis(),
   json: jest.fn().mockReturnThis()
@@ -18,7 +18,6 @@ let validReq: AuthriteRequest
 
 describe('acknowledgeMessage', () => {
   beforeAll(() => {
-    // ✅ Ensure mockKnex is correctly initialized
     mockKnex.mock(knex)
   })
 
@@ -27,11 +26,9 @@ describe('acknowledgeMessage', () => {
       throw e
     })
 
-    // ✅ Get tracker and install it
     queryTracker = mockKnex.getTracker() as mockKnex.Tracker
     queryTracker.install()
 
-    // ✅ Fully typed mock request
     validReq = {
       authrite: {
         identityKey: 'mockIdKey'
@@ -67,15 +64,15 @@ describe('acknowledgeMessage', () => {
   })
 
   it('Throws an error if messageIds is not an Array', async () => {
-    validReq.body.messageIds = '24' as unknown as string[] // ❌ Invalid type
+    validReq.body.messageIds = '24' as unknown as string[]
 
-    await acknowledgeMessage.func(validReq, mockRes as Response) // ✅ Ensure execution completes
+    await acknowledgeMessage.func(validReq, mockRes as Response)
 
-    expect(mockRes.status).toHaveBeenCalledWith(400) // ✅ Check if status is 400
+    expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_INVALID_MESSAGE_ID',
-      description: 'Message IDs must be formatted as an array of strings!' // ✅ Fixed case mismatch
+      description: 'Message IDs must be formatted as an array of strings!'
     }))
   }, 7000)
 
@@ -105,28 +102,23 @@ describe('acknowledgeMessage', () => {
 
   it('Throws an error if deletion fails', async () => {
     queryTracker.on('query', (q, s) => {
-      // console.log(`Query Step: ${s}, SQL: ${q.sql}, Bindings: ${JSON.stringify(q.bindings)}`)
-
       if (s === 1) {
         expect(q.method).toEqual('del')
         expect(q.sql).toEqual(
           'delete from `messages` where `recipient` = ? and `messageId` in (?)'
         )
 
-        // ✅ Fix: Ensure `messageIds` is an **array of strings**
         expect(q.bindings).toEqual([
           'mockIdKey',
-          '123' // ✅ Expecting a string, since `.whereIn()` correctly formats it
+          '123'
         ])
 
-        q.response(0) // ✅ Ensure no records are deleted (simulating failure)
+        q.response(0)
       }
     })
 
-    // ✅ Ensure function handles failed deletion correctly
     await acknowledgeMessage.func(validReq, mockRes as Response)
 
-    // ✅ Ensure mockRes.status(400) was actually called
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',

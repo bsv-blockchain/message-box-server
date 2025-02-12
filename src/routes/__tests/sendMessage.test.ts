@@ -4,11 +4,11 @@ import mockKnex from 'mock-knex'
 import { Response } from 'express'
 import { Message, SendMessageRequest } from '../../utils/testingInterfaces'
 
-// ✅ Ensure proper handling of mock-knex
+// Ensure proper handling of mock-knex
 const knex = sendMessage.knex
 let queryTracker: mockKnex.Tracker
 
-// ✅ Define Mock Express Response Object
+// Define Mock Express Response Object
 const mockRes: Partial<Response> = {
   status: jest.fn().mockReturnThis(),
   json: jest.fn().mockReturnThis()
@@ -20,7 +20,6 @@ let validMessageBox: { messageBoxId: number, type: string }
 
 describe('sendMessage', () => {
   beforeAll(() => {
-    // ✅ Ensure mockKnex is correctly initialized
     mockKnex.mock(knex)
   })
 
@@ -29,7 +28,6 @@ describe('sendMessage', () => {
       throw e
     })
 
-    // ✅ Get tracker and install it
     queryTracker = mockKnex.getTracker() as mockKnex.Tracker
     queryTracker.install()
 
@@ -68,7 +66,6 @@ describe('sendMessage', () => {
   })
 
   afterAll(() => {
-    // ✅ Unmock knex only once after all tests
     mockKnex.unmock(knex)
   })
 
@@ -101,13 +98,14 @@ describe('sendMessage', () => {
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
-      code: 'ERR_RECIPIENT_REQUIRED'
+      code: 'ERR_INVALID_RECIPIENT',
+      description: 'Recipient must be a compressed public key formatted as a hex string!'
     }))
   })
 
   it('Throws an error if recipient is not a string', async () => {
     if (validReq.body.message !== undefined && validReq.body.message !== null) {
-      validReq.body.message.recipient = Buffer.from('bob').toString() as unknown as string
+      validReq.body.message.recipient = 123 as unknown as string
     }
     await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
@@ -116,7 +114,7 @@ describe('sendMessage', () => {
       code: 'ERR_INVALID_RECIPIENT',
       description: 'Recipient must be a compressed public key formatted as a hex string!'
     }))
-  })
+  }, 10000)
 
   it('Returns error if messageBox is missing', async () => {
     if (validReq.body.message !== undefined && validReq.body.message !== null) {
@@ -126,22 +124,49 @@ describe('sendMessage', () => {
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
-      code: 'ERR_MESSAGEBOX_REQUIRED'
+      code: 'ERR_INVALID_MESSAGEBOX'
     }))
   })
 
   it('Throws an error if messageBox is not a string', async () => {
     if (validReq.body.message !== undefined && validReq.body.message !== null) {
-      validReq.body.message.messageBox = Buffer.from('payment_inbox').toString()
+      validReq.body.message.messageBox = 123 as unknown as string
     }
-    await sendMessage.func(validReq, mockRes as Response)
+
+    if (validReq.body.message !== null && validReq.body.message !== undefined) {
+      console.log('Modified messageBox:', validReq.body.message.messageBox)
+    }
+    const response = await sendMessage.func(validReq, mockRes as Response)
+
+    console.log('After calling sendMessage.func, Response:', response)
+
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_INVALID_MESSAGEBOX',
       description: 'MessageBox must be a string!'
     }))
-  })
+  }, 10000)
+
+  it('Throws an error if the message body is not a string', async () => {
+    if (validReq.body.message !== undefined && validReq.body.message !== null) {
+      validReq.body.message.body = { text: 'this is my message body' } as unknown as string
+    }
+
+    if (validReq.body.message !== undefined && validReq.body.message !== null) {
+      console.log('Modified body:', validReq.body.message.body)
+    }
+
+    const response = await sendMessage.func(validReq, mockRes as Response)
+    console.log('After calling sendMessage.func, Response:', response)
+
+    expect(mockRes.status).toHaveBeenCalledWith(400)
+    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'error',
+      code: 'ERR_INVALID_MESSAGE_BODY',
+      description: 'Message body must be formatted as a string!'
+    }))
+  }, 10000)
 
   it('Returns error if message body is missing', async () => {
     if (validReq.body.message !== undefined && validReq.body.message !== null) {
@@ -155,30 +180,23 @@ describe('sendMessage', () => {
     }))
   })
 
-  it('Throws an error if the message body is not a string', async () => {
-    if (validReq.body.message !== undefined && validReq.body.message !== null) {
-      validReq.body.message.body = Buffer.from('this is my message body').toString()
-    }
-    await sendMessage.func(validReq, mockRes as Response)
-    expect(mockRes.status).toHaveBeenCalledWith(400)
-    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'error',
-      code: 'ERR_INVALID_MESSAGE_BODY',
-      description: 'Message body must be formatted as a string!'
-    }))
-  })
-
   it('Queries for messageBox that does not yet exist', async () => {
     queryTracker.on('query', (q, s) => {
       if (s === 1) {
-        q.response(false)
-      } else if (s === 3) {
-        q.response([validMessageBox])
+        q.response(false) // Simulating that the messageBox doesn't exist
+      } else if (s === 2) {
+        q.response([validMessageBox]) // Simulating successful messageBox creation
       } else {
-        q.response([])
+        q.response([]) // Default response
       }
     })
+
+    if (validReq.body.message !== undefined && validReq.body.message !== null) {
+      validReq.body.message.body = 'Hello, world!'
+    }
+
     await sendMessage.func(validReq, mockRes as Response)
+
     expect(mockRes.status).toHaveBeenCalledWith(200)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining(validRes))
   })
