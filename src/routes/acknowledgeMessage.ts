@@ -51,15 +51,22 @@ export default {
       // The server removes the message after it has been acknowledged
       const deleted = await knex('messages')
         .where({ recipient: req.authrite.identityKey })
-        .whereIn('messageId', messageIds)
+        .whereIn('messageId', Array.isArray(messageIds) ? messageIds : [messageIds]) // ✅ Ensure array
         .del()
 
-      if (deleted === 0 || isNaN(deleted)) {
+      // ✅ Ensure correct behavior when no messages are deleted
+      if (deleted === 0) {
+        console.log('Deletion failed: No messages found to delete') // ✅ Debugging line
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_ACKNOWLEDGMENT',
           description: 'Message not found!'
         })
+      }
+
+      // ✅ Explicitly handle database failure by catching errors
+      if (deleted < 0) {
+        throw new Error('Deletion failed') // This will be caught in the catch block
       }
 
       return res.status(200).json({ status: 'success' })
