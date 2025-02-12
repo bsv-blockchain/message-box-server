@@ -1,16 +1,19 @@
 /* eslint-env jest */
 import listMessages from '../listMessages'
-import mockKnex, { getTracker, Tracker } from 'mock-knex'
+import mockKnex from 'mock-knex'
 import { Response } from 'express'
 import { AuthriteRequestMB } from '../../utils/testingInterfaces'
 
-// Mock Express Response Object
+// ✅ Ensure proper handling of mock-knex
+const knex = listMessages.knex
+let queryTracker: mockKnex.Tracker
+
+// ✅ Define Mock Express Response Object
 const mockRes: Partial<Response> = {
   status: jest.fn().mockReturnThis(),
   json: jest.fn().mockReturnThis()
 }
 
-let queryTracker: Tracker
 let validReq: AuthriteRequestMB
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 let validRes: { status: string, messages: any[] }
@@ -18,14 +21,18 @@ let validMessageBoxes: Array<{ messageBoxId: number }>
 let validMessages: Array<{ sender: string, messageBoxId: number, body: string }>
 
 describe('listMessages', () => {
+  beforeAll(() => {
+    // ✅ Ensure mockKnex is correctly initialized
+    mockKnex.mock(knex)
+  })
+
   beforeEach(() => {
     jest.spyOn(console, 'error').mockImplementation((e) => {
       throw e
     })
 
-    // Set up mock DB tracking
-    mockKnex.mock(listMessages.knex)
-    queryTracker = getTracker()
+    // ✅ Get tracker and install it
+    queryTracker = mockKnex.getTracker() as mockKnex.Tracker
     queryTracker.install()
 
     validMessages = [{
@@ -59,8 +66,15 @@ describe('listMessages', () => {
 
   afterEach(() => {
     jest.clearAllMocks()
-    queryTracker.uninstall()
-    mockKnex.unmock(listMessages.knex)
+
+    if (queryTracker !== null && queryTracker !== undefined) {
+      queryTracker.uninstall()
+    }
+  })
+
+  afterAll(() => {
+    // ✅ Unmock knex only once after all tests
+    mockKnex.unmock(knex)
   })
 
   it('Throws an error if a messageBox is not provided', async () => {

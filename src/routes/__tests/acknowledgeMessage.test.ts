@@ -1,26 +1,34 @@
 /* eslint-env jest */
 import acknowledgeMessage from '../acknowledgeMessage'
-import mockKnex, { getTracker, Tracker } from 'mock-knex'
-import { Response } from 'express'
+import mockKnex from 'mock-knex'
 import { AuthriteRequest } from '../../utils/testingInterfaces'
+import { Response } from 'express'
 
+// ✅ Ensure proper handling of mock-knex
+const knex = acknowledgeMessage.knex
+let queryTracker: mockKnex.Tracker
+
+// ✅ Define Mock Express Response Object
 const mockRes: Partial<Response> = {
   status: jest.fn().mockReturnThis(),
   json: jest.fn().mockReturnThis()
 }
 
-let queryTracker: Tracker
 let validReq: AuthriteRequest
 
 describe('acknowledgeMessage', () => {
+  beforeAll(() => {
+    // ✅ Ensure mockKnex is correctly initialized
+    mockKnex.mock(knex)
+  })
+
   beforeEach(() => {
     jest.spyOn(console, 'error').mockImplementation((e) => {
       throw e
     })
 
-    // ✅ Set up mock DB tracking
-    mockKnex.mock(acknowledgeMessage.knex)
-    queryTracker = getTracker()
+    // ✅ Get tracker and install it
+    queryTracker = mockKnex.getTracker() as mockKnex.Tracker
     queryTracker.install()
 
     // ✅ Fully typed mock request
@@ -38,8 +46,14 @@ describe('acknowledgeMessage', () => {
 
   afterEach(() => {
     jest.clearAllMocks()
-    queryTracker.uninstall()
-    mockKnex.unmock(acknowledgeMessage.knex)
+
+    if (queryTracker !== null && queryTracker !== undefined) {
+      queryTracker.uninstall()
+    }
+  })
+
+  afterAll(() => {
+    mockKnex.unmock(knex)
   })
 
   it('Throws an error if messageId is missing', async () => {

@@ -1,27 +1,36 @@
 /* eslint-env jest */
 import sendMessage from '../sendMessage'
-import mockKnex, { getTracker, Tracker } from 'mock-knex'
+import mockKnex from 'mock-knex'
 import { Response } from 'express'
 import { Message, SendMessageRequest } from '../../utils/testingInterfaces'
 
+// ✅ Ensure proper handling of mock-knex
+const knex = sendMessage.knex
+let queryTracker: mockKnex.Tracker
+
+// ✅ Define Mock Express Response Object
 const mockRes: Partial<Response> = {
   status: jest.fn().mockReturnThis(),
   json: jest.fn().mockReturnThis()
 }
 
-let queryTracker: Tracker
 let validReq: SendMessageRequest
 let validRes: { status: string }
 let validMessageBox: { messageBoxId: number, type: string }
 
 describe('sendMessage', () => {
+  beforeAll(() => {
+    // ✅ Ensure mockKnex is correctly initialized
+    mockKnex.mock(knex)
+  })
+
   beforeEach(() => {
     jest.spyOn(console, 'error').mockImplementation((e) => {
       throw e
     })
 
-    mockKnex.mock(sendMessage.knex)
-    queryTracker = getTracker()
+    // ✅ Get tracker and install it
+    queryTracker = mockKnex.getTracker() as mockKnex.Tracker
     queryTracker.install()
 
     // Mock Data
@@ -52,8 +61,15 @@ describe('sendMessage', () => {
 
   afterEach(() => {
     jest.clearAllMocks()
-    queryTracker.uninstall()
-    mockKnex.unmock(sendMessage.knex)
+
+    if (queryTracker !== null && queryTracker !== undefined) {
+      queryTracker.uninstall()
+    }
+  })
+
+  afterAll(() => {
+    // ✅ Unmock knex only once after all tests
+    mockKnex.unmock(knex)
   })
 
   it('Throws an error if message is missing', async () => {
