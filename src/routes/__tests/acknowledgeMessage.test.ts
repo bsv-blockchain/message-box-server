@@ -1,19 +1,9 @@
 /* eslint-env jest */
 import acknowledgeMessage from '../acknowledgeMessage'
 import mockKnex, { getTracker, Tracker } from 'mock-knex'
-import { Request, Response } from 'express'
+import { Response } from 'express'
+import { AuthriteRequest } from '../../utils/testingInterfaces'
 
-// ✅ Define Request Type
-interface AuthriteRequest extends Request {
-  authrite: {
-    identityKey: string
-  }
-  body: {
-    messageIds?: string[] // ✅ Ensure string[] as expected
-  }
-}
-
-// ✅ Mock Express Response Object
 const mockRes: Partial<Response> = {
   status: jest.fn().mockReturnThis(),
   json: jest.fn().mockReturnThis()

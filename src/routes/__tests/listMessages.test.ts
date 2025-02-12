@@ -1,17 +1,8 @@
 /* eslint-env jest */
 import listMessages from '../listMessages'
 import mockKnex, { getTracker, Tracker } from 'mock-knex'
-import { Request, Response } from 'express'
-
-// Define Request Type
-interface AuthriteRequest extends Request {
-  authrite: {
-    identityKey: string
-  }
-  body: {
-    messageBox?: string
-  }
-}
+import { Response } from 'express'
+import { AuthriteRequestMB } from '../../utils/testingInterfaces'
 
 // Mock Express Response Object
 const mockRes: Partial<Response> = {
@@ -20,7 +11,7 @@ const mockRes: Partial<Response> = {
 }
 
 let queryTracker: Tracker
-let validReq: AuthriteRequest
+let validReq: AuthriteRequestMB
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 let validRes: { status: string, messages: any[] }
 let validMessageBoxes: Array<{ messageBoxId: number }>
@@ -63,7 +54,7 @@ describe('listMessages', () => {
       },
       get: jest.fn(),
       header: jest.fn()
-    } as unknown as AuthriteRequest
+    } as unknown as AuthriteRequestMB
   })
 
   afterEach(() => {

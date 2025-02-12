@@ -1,19 +1,8 @@
 /* eslint-env jest */
 import sendMessage from '../sendMessage'
 import mockKnex, { getTracker, Tracker } from 'mock-knex'
-import { Request, Response } from 'express'
-
-interface Message {
-  messageId: string
-  recipient: string
-  messageBox: string
-  body: string
-}
-
-interface SendMessageRequest extends Request {
-  authrite: { identityKey: string }
-  body: { message?: Message }
-}
+import { Response } from 'express'
+import { Message, SendMessageRequest } from '../../utils/testingInterfaces'
 
 const mockRes: Partial<Response> = {
   status: jest.fn().mockReturnThis(),
