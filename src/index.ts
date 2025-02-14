@@ -2,11 +2,12 @@ import * as dotenv from 'dotenv'
 import express, { Express, Request, Response, NextFunction } from 'express'
 import bodyParser from 'body-parser'
 import prettyjson from 'prettyjson'
-import { preAuthrite, postAuthrite } from './routes'
-import authrite from 'authrite-express'
+import { preAuthrite, postAuthrite } from './routes/index.js'
 import { spawn } from 'child_process'
 import { createServer } from 'http'
-import { Socket } from 'socket.io'
+import { AuthSocketServer } from '@bsv/authsocket'
+import { createAuthMiddleware } from '@bsv/auth-express-middleware'
+import { WalletClient, SessionManager } from '@bsv/sdk'
 
 dotenv.config()
 
@@ -15,7 +16,9 @@ const app: Express = express()
 const {
   NODE_ENV = 'development',
   PORT,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   SERVER_PRIVATE_KEY,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   HOSTING_DOMAIN,
   ROUTING_PREFIX = ''
 } = process.env
@@ -32,15 +35,26 @@ const HTTP_PORT: number = NODE_ENV !== 'development'
           ? parsedEnvPort
           : 8080
 
-// Create HTTP server
-const http = createServer((req, res) => app(req, res))
+// Initialize Wallet for Authentication
+const wallet = new WalletClient() // Replace with your actual Wallet instance setup
+const sessionManager = new SessionManager()
 
-// Ensure `serverPrivateKey` is only set if it exists
-const io = authrite.socket(http, {
+// Create HTTP server
+const http = createServer((req, res) => {
+  app(req, res).catch((err) => {
+    console.error('Unhandled server error:', err)
+    res.statusCode = 500
+    res.end('Internal Server Error')
+  })
+})
+
+const io = new AuthSocketServer(http, {
+  wallet, // Required for signing
+  sessionManager, // Manages authentication sessions
   cors: {
-    origin: '*'
-  },
-  serverPrivateKey: SERVER_PRIVATE_KEY ?? '' // Ensuring it never gets undefined
+    origin: '*', // Allows all origins for WebSockets
+    methods: ['GET', 'POST']
+  }
 })
 
 // Configure JSON body parser
@@ -48,12 +62,16 @@ app.use(bodyParser.json({ limit: '1gb', type: 'application/json' }))
 
 export { io, http, HTTP_PORT, ROUTING_PREFIX }
 
+// Initialize Auth Middleware
+const authMiddleware = createAuthMiddleware({
+  wallet // Wallet must be passed to enable authentication
+})
+
 // Force HTTPS unless in development mode
-// Ensure HTTPS is used unless in development mode
 app.use((req: Request, res: Response, next: NextFunction) => {
   const forwardedProto: string = req.get('x-forwarded-proto') ?? ''
-  const isSecure: boolean = (req as any).secure === true // Ensure req.secure exists
-  const host: string = req.get('host') ?? '' // Ensure host is a string
+  const isSecure: boolean = (req as any).secure === true
+  const host: string = req.get('host') ?? ''
 
   if (!isSecure && forwardedProto !== 'https' && NODE_ENV !== 'development') {
     return res.redirect(`https://${host}${String(req.url)}`)
@@ -75,62 +93,60 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   }
 })
 
-// Configure WebSocket Events
-io.on('connection', (socket: Socket) => {
-  console.log('A user connected')
+// Configure WebSocket Events (Now Using @bsv/authsocket)
+io.on('connection', (socket) => {
+  const identityKey = socket.identityKey ?? 'unknown'
+  console.log(`New authenticated WebSocket connection from: ${identityKey}`)
 
-  // Support private rooms
-  socket.on('joinPrivateRoom', async (roomId: string) => {
-    try {
-      await socket.join(roomId) // Ensures the promise is properly handled
-      console.log('User joined private room')
-    } catch (error) {
-      console.error(`Failed to join private room: ${roomId}`, error)
-    }
-  })
-
-  // Joining a room
-  socket.on('joinRoom', async (roomId: string) => {
-    const identityKeyRaw = socket.handshake.headers['x-authrite-identity-key']
-    const identityKey: string = Array.isArray(identityKeyRaw) ? identityKeyRaw[0] : (identityKeyRaw !== null && identityKeyRaw !== undefined ? identityKeyRaw : '')
-
-    if (identityKey !== '' && roomId.startsWith(identityKey)) {
+  socket.on('joinPrivateRoom', (roomId: string) => {
+    void (async () => {
       try {
-        await socket.join(roomId) // Properly handle the promise
-        console.log(`User joined room ${roomId}`)
+        await socket.ioSocket.join(roomId)
+        console.log(`User joined private room: ${roomId}`)
       } catch (error) {
-        console.error(`Failed to join room: ${roomId}`, error)
+        console.error(`Failed to join private room: ${roomId}`, error)
       }
-    }
+    })()
   })
 
-  // Leaving a room
-  socket.on('leaveRoom', async (roomId: string) => {
-    try {
-      await socket.leave(roomId) // Ensures the promise is properly handled
-      console.log(`User left room ${roomId}`)
-    } catch (error) {
-      console.error(`Failed to leave room: ${roomId}`, error)
-    }
-  })
-
-  // Sending a message to a room
-  // Sending a message to a room
-  socket.on('sendMessage', ({ roomId, message }: { roomId: string, message: any }) => {
-    const identityKeyRaw = socket.handshake.headers['x-authrite-identity-key']
-    const identityKey: string = Array.isArray(identityKeyRaw) ? identityKeyRaw[0] : (identityKeyRaw !== null && identityKeyRaw !== undefined ? identityKeyRaw : '')
-
-    if (identityKey !== '') {
-      const dataToSend: { sender: string, message?: string | object } = { sender: identityKey }
-
-      if (typeof message === 'object' && Object.keys(message).length !== 0) {
-        Object.assign(dataToSend, message)
+  socket.on('joinRoom', (roomId: string) => {
+    void (async () => {
+      if (socket.identityKey != null && roomId.startsWith(socket.identityKey)) {
+        try {
+          await socket.ioSocket.join(roomId) // ✅ Correct method for joining rooms
+          console.log(`User joined room: ${roomId}`)
+        } catch (error) {
+          console.error(`Failed to join room: ${roomId}`, error)
+        }
       } else {
-        dataToSend.message = String(message) // Ensuring message is a string
+        console.warn(`Unauthorized room join attempt by: ${socket.identityKey ?? 'unknown'}`)
       }
+    })()
+  })
 
-      io.to(roomId).emit(`sendMessage-${roomId}`, dataToSend)
+  socket.on('leaveRoom', (roomId: string) => {
+    void (async () => {
+      try {
+        await socket.ioSocket.leave(roomId) // ✅ Correct method for leaving rooms
+        console.log(`User left room: ${roomId}`)
+      } catch (error) {
+        console.error(`Failed to leave room: ${roomId}`, error)
+      }
+    })()
+  })
+
+  socket.on('sendMessage', ({ roomId, message }: { roomId: string, message: any }) => {
+    if (socket.identityKey === null || socket.identityKey === undefined) {
+      console.warn('Unauthorized message attempt from unidentified socket.')
+      return
     }
+
+    const dataToSend = {
+      sender: socket.identityKey,
+      message: typeof message === 'object' && Object.keys(message).length !== 0 ? message : String(message)
+    }
+
+    socket.ioSocket.broadcast.to(roomId).emit(`sendMessage-${roomId}`, dataToSend)
   })
 
   socket.on('disconnect', (reason: string) => {
@@ -157,7 +173,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     originalJson(json)
     console.log(`[${req.method}] -> ${req.url}`)
     console.log(prettyjson.render(json, { keysColor: 'green' }))
-    return res // Ensure Response is returned
+    return res
   }
 
   next()
@@ -166,19 +182,16 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // Serve Static Files
 app.use(express.static('public'))
 
-// Pre-Authrite Routes
-preAuthrite.forEach((route: { type: string, path: string, func: (req: Request, res: Response, next: NextFunction) => void }) => {
+// Pre-Auth Routes (Handled as before)
+preAuthrite.forEach((route) => {
   app[route.type as 'get' | 'post' | 'put' | 'delete'](`${String(ROUTING_PREFIX)}${String(route.path)}`, route.func)
 })
 
-// Authrite Middleware
-app.use(authrite.middleware({
-  serverPrivateKey: SERVER_PRIVATE_KEY,
-  baseUrl: HOSTING_DOMAIN
-}))
+// Apply New Authentication Middleware
+app.use(authMiddleware)
 
-// Post-Authrite Routes
-postAuthrite.forEach((route: { type: string, path: string, func: (req: Request, res: Response, next: NextFunction) => void }) => {
+// Post-Auth Routes
+postAuthrite.forEach((route) => {
   app[route.type as 'get' | 'post' | 'put' | 'delete'](`${String(ROUTING_PREFIX)}${String(route.path)}`, route.func)
 })
 
