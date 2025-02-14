@@ -1,10 +1,12 @@
 import { Request, Response } from 'express'
-import knexConfig from '../../knexfile'
-import knexLib from 'knex'
+import knexConfig from '../../knexfile.js'
+import knexLib, { Knex } from 'knex'
+import { createPaymentMiddleware } from '@bsv/payment-express-middleware'
+import { calculateMessagePrice } from '../utils/payment.js'
 
 const { NODE_ENV = 'development' } = process.env
 
-const knex = knexLib(
+const knex: Knex = knexLib.default(
   NODE_ENV === 'production' || NODE_ENV === 'staging'
     ? knexConfig.production
     : knexConfig.development
