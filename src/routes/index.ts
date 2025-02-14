@@ -1,7 +1,7 @@
-import migrate from './migrate'
-import sendMessage from './sendMessage'
-import listMessages from './listMessages'
-import acknowledgeMessage from './acknowledgeMessage'
+import migrate from './migrate.js'
+import sendMessage from './sendMessage.js'
+import listMessages from './listMessages.js'
+import acknowledgeMessage from './acknowledgeMessage.js'
 
 export const preAuthrite = [migrate]
 

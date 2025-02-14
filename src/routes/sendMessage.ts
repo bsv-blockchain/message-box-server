@@ -3,6 +3,7 @@ import knexConfig from '../../knexfile.js'
 import knexLib, { Knex } from 'knex'
 import { createPaymentMiddleware } from '@bsv/payment-express-middleware'
 import { calculateMessagePrice } from '../utils/payment.js'
+import { WalletClient } from '@bsv/sdk'
 
 const { NODE_ENV = 'development' } = process.env
 
@@ -24,6 +25,27 @@ interface SendMessageRequest extends Request {
   body: { message?: Message }
 }
 
+// Initialize Wallet
+const wallet = new WalletClient()
+
+// Create Payment Middleware
+const paymentMiddleware = createPaymentMiddleware({
+  wallet,
+  calculateRequestPrice: async (req) => {
+    const body = req.body as { message?: { body?: string }, priority?: boolean }
+
+    if (body == null || typeof body !== 'object') {
+      return 0 // Default to 0 satoshis if body is invalid
+    }
+
+    const { message, priority = false } = body
+    if (message?.body != null && message.body.trim() !== '') {
+      return calculateMessagePrice(message.body, priority)
+    }
+    return 0
+  }
+})
+
 export default {
   type: 'post',
   path: '/sendMessage',
@@ -41,6 +63,20 @@ export default {
     status: 'success'
   },
   func: async (req: SendMessageRequest, res: Response): Promise<Response> => {
+    try {
+      await paymentMiddleware(req, res, (err?: any) => {
+        if (err != null) {
+          console.error('Payment Error:', err)
+          throw new Error('Payment required before sending messages.')
+        }
+      })
+    } catch (err) {
+      return res.status(402).json({
+        status: 'error',
+        code: 'ERR_PAYMENT_REQUIRED',
+        description: 'Payment is required before sending messages.'
+      })
+    }
     try {
       const { message } = req.body
 
@@ -96,7 +132,6 @@ export default {
       }
 
       // Select the message box to send this message to
-      // eslint-disable-next-line prefer-const
       const messageBox = await knex('messageBox')
         .where({
           identityKey: message.recipient,

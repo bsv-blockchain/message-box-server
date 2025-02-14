@@ -36,7 +36,7 @@ const HTTP_PORT: number = NODE_ENV !== 'development'
           : 8080
 
 // Initialize Wallet for Authentication
-const wallet = new WalletClient() // Replace with your actual Wallet instance setup
+const wallet = new WalletClient()
 const sessionManager = new SessionManager()
 
 // Create HTTP server
@@ -64,7 +64,7 @@ export { io, http, HTTP_PORT, ROUTING_PREFIX }
 
 // Initialize Auth Middleware
 const authMiddleware = createAuthMiddleware({
-  wallet // Wallet must be passed to enable authentication
+  wallet
 })
 
 // Force HTTPS unless in development mode
@@ -113,7 +113,7 @@ io.on('connection', (socket) => {
     void (async () => {
       if (socket.identityKey != null && roomId.startsWith(socket.identityKey)) {
         try {
-          await socket.ioSocket.join(roomId) // ✅ Correct method for joining rooms
+          await socket.ioSocket.join(roomId)
           console.log(`User joined room: ${roomId}`)
         } catch (error) {
           console.error(`Failed to join room: ${roomId}`, error)
@@ -127,7 +127,7 @@ io.on('connection', (socket) => {
   socket.on('leaveRoom', (roomId: string) => {
     void (async () => {
       try {
-        await socket.ioSocket.leave(roomId) // ✅ Correct method for leaving rooms
+        await socket.ioSocket.leave(roomId)
         console.log(`User left room: ${roomId}`)
       } catch (error) {
         console.error(`Failed to leave room: ${roomId}`, error)
@@ -182,9 +182,12 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // Serve Static Files
 app.use(express.static('public'))
 
-// Pre-Auth Routes (Handled as before)
+// Pre-Auth Routes
 preAuthrite.forEach((route) => {
-  app[route.type as 'get' | 'post' | 'put' | 'delete'](`${String(ROUTING_PREFIX)}${String(route.path)}`, route.func)
+  app[route.type as 'get' | 'post' | 'put' | 'delete'](
+    `${String(ROUTING_PREFIX)}${String(route.path)}`,
+    route.func as unknown as (req: Request, res: Response, next: NextFunction) => void
+  )
 })
 
 // Apply New Authentication Middleware
@@ -192,7 +195,10 @@ app.use(authMiddleware)
 
 // Post-Auth Routes
 postAuthrite.forEach((route) => {
-  app[route.type as 'get' | 'post' | 'put' | 'delete'](`${String(ROUTING_PREFIX)}${String(route.path)}`, route.func)
+  app[route.type as 'get' | 'post' | 'put' | 'delete'](
+    `${String(ROUTING_PREFIX)}${String(route.path)}`,
+    route.func as unknown as (req: Request, res: Response, next: NextFunction) => void
+  )
 })
 
 // 404 Route Not Found Handler
