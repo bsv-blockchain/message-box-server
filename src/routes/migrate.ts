@@ -1,10 +1,14 @@
 import { Request, Response } from 'express'
 import knexConfig from '../../knexfile.js'
-import knexLib, { Knex } from 'knex'
+import * as knexLib from 'knex'
 
 const { NODE_ENV = 'development', MIGRATE_KEY } = process.env
 
-const knex: Knex = knexLib.default(
+const knex: knexLib.Knex = (knexLib as any).default?.(
+  NODE_ENV === 'production' || NODE_ENV === 'staging'
+    ? knexConfig.production
+    : knexConfig.development
+) ?? (knexLib as any)(
   NODE_ENV === 'production' || NODE_ENV === 'staging'
     ? knexConfig.production
     : knexConfig.development

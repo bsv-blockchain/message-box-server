@@ -1,0 +1,1 @@
+{"version":3,"file":"migrate.d.ts","sourceRoot":"","sources":["../../../../src/routes/migrate.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,OAAO,EAAE,QAAQ,EAAE,MAAM,SAAS,CAAA;AAE3C,OAAO,KAAK,OAAO,MAAM,MAAM,CAAA;AAc/B,UAAU,cAAe,SAAQ,OAAO;IACtC,IAAI,EAAE;QAAE,UAAU,CAAC,EAAE,MAAM,CAAA;KAAE,CAAA;CAC9B;;;;;;gBAOmB,cAAc,OAAO,QAAQ,KAAG,OAAO,CAAC,QAAQ,CAAC;;AALrE,wBAiCC"}

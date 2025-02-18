@@ -1,13 +1,16 @@
 import { Request, Response } from 'express'
 import knexConfig from '../../knexfile.js'
-import knexLib, { Knex } from 'knex'
+import * as knexLib from 'knex'
 import { createPaymentMiddleware } from '@bsv/payment-express-middleware'
-import { calculateMessagePrice } from '../utils/payment.js'
 import { WalletClient } from '@bsv/sdk'
 
 const { NODE_ENV = 'development' } = process.env
 
-const knex: Knex = knexLib.default(
+const knex: knexLib.Knex = (knexLib as any).default?.(
+  NODE_ENV === 'production' || NODE_ENV === 'staging'
+    ? knexConfig.production
+    : knexConfig.development
+) ?? (knexLib as any)(
   NODE_ENV === 'production' || NODE_ENV === 'staging'
     ? knexConfig.production
     : knexConfig.development
@@ -23,6 +26,14 @@ interface Message {
 interface SendMessageRequest extends Request {
   authrite: { identityKey: string }
   body: { message?: Message }
+}
+
+function calculateMessagePrice (message: string, priority: boolean = false): number {
+  const basePrice = 500 // Base fee in satoshis
+  const sizeFactor = Math.ceil(Buffer.byteLength(message, 'utf8') / 1024) * 50 // 50 satoshis per KB
+  const priorityFee = priority ? 200 : 0 // Additional fee for priority messages
+
+  return basePrice + sizeFactor + priorityFee
 }
 
 // Initialize Wallet

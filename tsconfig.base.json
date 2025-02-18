@@ -22,7 +22,8 @@
     "experimentalDecorators": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
-    "types": ["jest"]
+    "types": ["jest"],
+    "allowSyntheticDefaultImports": true,
   },
   "include": [
     "src"
