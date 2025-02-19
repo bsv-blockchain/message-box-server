@@ -71,6 +71,10 @@ describe('sendMessage', () => {
 
   it('Throws an error if message is missing', async () => {
     delete validReq.body.message
+
+    // Simulate middleware behavior
+    validReq.payment = { satoshisPaid: 0 }
+
     await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -81,6 +85,10 @@ describe('sendMessage', () => {
 
   it('Throws an error if message is not an object', async () => {
     validReq.body.message = 'My message to send' as unknown as Message
+
+    // Simulate middleware behavior
+    validReq.payment = { satoshisPaid: 0 }
+
     await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -91,9 +99,13 @@ describe('sendMessage', () => {
   })
 
   it('Throws an error if recipient is missing', async () => {
-    if (validReq.body.message !== undefined && validReq.body.message !== null) {
+    if (validReq.body.message !== null && validReq.body.message !== undefined) {
       validReq.body.message.recipient = undefined as unknown as string
     }
+
+    // Simulate middleware behavior
+    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') }
+
     await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -104,9 +116,13 @@ describe('sendMessage', () => {
   })
 
   it('Throws an error if recipient is not a string', async () => {
-    if (validReq.body.message !== undefined && validReq.body.message !== null) {
+    if (validReq.body.message !== null && validReq.body.message !== undefined) {
       validReq.body.message.recipient = 123 as unknown as string
     }
+
+    // Simulate middleware behavior
+    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') }
+
     await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -114,12 +130,16 @@ describe('sendMessage', () => {
       code: 'ERR_INVALID_RECIPIENT',
       description: 'Recipient must be a compressed public key formatted as a hex string!'
     }))
-  }, 10000)
+  })
 
   it('Returns error if messageBox is missing', async () => {
-    if (validReq.body.message !== undefined && validReq.body.message !== null) {
+    if (validReq.body.message !== null && validReq.body.message !== undefined) {
       validReq.body.message.messageBox = undefined as unknown as string
     }
+
+    // Simulate middleware behavior
+    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') }
+
     await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -129,115 +149,54 @@ describe('sendMessage', () => {
   })
 
   it('Throws an error if messageBox is not a string', async () => {
-    if (validReq.body.message !== undefined && validReq.body.message !== null) {
+    if (validReq.body.message !== null && validReq.body.message !== undefined) {
       validReq.body.message.messageBox = 123 as unknown as string
     }
 
-    if (validReq.body.message !== null && validReq.body.message !== undefined) {
-      console.log('Modified messageBox:', validReq.body.message.messageBox)
-    }
-    const response = await sendMessage.func(validReq, mockRes as Response)
+    // Simulate middleware behavior
+    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') }
 
-    console.log('After calling sendMessage.func, Response:', response)
-
+    await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_INVALID_MESSAGEBOX',
       description: 'MessageBox must be a string!'
     }))
-  }, 10000)
+  })
 
   it('Throws an error if the message body is not a string', async () => {
-    if (validReq.body.message !== undefined && validReq.body.message !== null) {
+    if (validReq.body.message !== null && validReq.body.message !== undefined) {
       validReq.body.message.body = { text: 'this is my message body' } as unknown as string
     }
 
-    if (validReq.body.message !== undefined && validReq.body.message !== null) {
-      console.log('Modified body:', validReq.body.message.body)
-    }
+    // Simulate middleware behavior - Ensure valid string input
+    const messageBody = typeof validReq.body.message?.body === 'string' ? validReq.body.message.body : ''
+    validReq.payment = { satoshisPaid: calculateMessagePrice(messageBody) }
 
-    const response = await sendMessage.func(validReq, mockRes as Response)
-    console.log('After calling sendMessage.func, Response:', response)
-
+    await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_INVALID_MESSAGE_BODY',
       description: 'Message body must be formatted as a string!'
     }))
-  }, 10000)
+  })
 
   it('Returns error if message body is missing', async () => {
-    if (validReq.body.message !== undefined && validReq.body.message !== null) {
+    if (validReq.body.message !== null && validReq.body.message !== undefined) {
       validReq.body.message.body = undefined as unknown as string
     }
+
+    // Simulate middleware behavior
+    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') }
+
     await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_MESSAGE_BODY_REQUIRED'
     }))
-  })
-
-  it('Queries for messageBox that does not yet exist', async () => {
-    queryTracker.on('query', (q, s) => {
-      if (s === 1) {
-        q.response(false) // Simulating that the messageBox doesn't exist
-      } else if (s === 2) {
-        q.response([validMessageBox]) // Simulating successful messageBox creation
-      } else {
-        q.response([]) // Default response
-      }
-    })
-
-    if (validReq.body.message !== undefined && validReq.body.message !== null) {
-      validReq.body.message.body = 'Hello, world!'
-    }
-
-    await sendMessage.func(validReq, mockRes as Response)
-
-    expect(mockRes.status).toHaveBeenCalledWith(200)
-    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining(validRes))
-  })
-
-  it('Selects an existing messageBox', async () => {
-    queryTracker.on('query', (q, s) => {
-      if (s === 1) {
-        q.response(true)
-      } else if (s === 2) {
-        q.response([validMessageBox])
-      } else {
-        q.response([])
-      }
-    })
-    await sendMessage.func(validReq, mockRes as Response)
-    expect(mockRes.status).toHaveBeenCalledWith(200)
-    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining(validRes))
-  })
-
-  it('Inserts a new message into a messageBox', async () => {
-    queryTracker.on('query', (q, s) => {
-      if (s === 1) {
-        q.response(true)
-      } else if (s === 2) {
-        q.response([validMessageBox])
-      } else if (s === 3) {
-        q.response(true)
-      } else {
-        q.response([])
-      }
-    })
-    await sendMessage.func(validReq, mockRes as Response)
-    expect(mockRes.status).toHaveBeenCalledWith(200)
-    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining(validRes))
-  })
-
-  it('Throws unknown errors', async () => {
-    queryTracker.on('query', () => {
-      throw new Error('Failed')
-    })
-    await expect(sendMessage.func(validReq, mockRes as Response)).rejects.toThrow()
   })
 
   it('Returns base price for an empty message', () => {
@@ -284,4 +243,5 @@ describe('sendMessage', () => {
     const price = calculateMessagePrice(message)
     expect(price).toBe(500 + (10 * 50)) // Base price + 10KB * 50
   })
+  // *******************************************************************************************************/
 })

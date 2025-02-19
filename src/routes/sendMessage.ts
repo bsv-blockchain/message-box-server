@@ -25,7 +25,11 @@ interface Message {
 
 interface SendMessageRequest extends Request {
   authrite: { identityKey: string }
-  body: { message?: Message }
+  body: {
+    message?: Message
+    priority?: boolean
+  }
+  payment?: { satoshisPaid?: number }
 }
 
 export function calculateMessagePrice (message: string, priority: boolean = false): number {
@@ -43,17 +47,32 @@ const wallet = new WalletClient()
 const paymentMiddleware = createPaymentMiddleware({
   wallet,
   calculateRequestPrice: async (req) => {
-    const body = req.body as { message?: { body?: string }, priority?: boolean }
+    try {
+      console.log('[paymentMiddleware] Entered calculateRequestPrice function...')
+      console.log('[paymentMiddleware] Received request body:', JSON.stringify(req.body, null, 2))
 
-    if (body == null || typeof body !== 'object') {
-      return 0 // Default to 0 satoshis if body is invalid
-    }
+      const body = req.body as { message?: { body?: string }, priority?: boolean }
 
-    const { message, priority = false } = body
-    if (message?.body != null && message.body.trim() !== '') {
-      return calculateMessagePrice(message.body, priority)
+      if (body == null || typeof body !== 'object') {
+        console.log('[paymentMiddleware] Invalid body detected. Returning price: 0')
+        return 0
+      }
+
+      console.log('[paymentMiddleware] Body is valid. Extracting message and priority...')
+      const { message, priority = false } = body
+
+      if (message?.body != null && message.body.trim() !== '') {
+        const price = calculateMessagePrice(message.body, priority)
+        console.log(`[paymentMiddleware] Calculated price: ${price}`)
+        return price
+      }
+
+      console.log('[paymentMiddleware] Empty or missing message body. Returning price: 0')
+      return 0
+    } catch (err) {
+      console.error('[paymentMiddleware] ERROR in calculateRequestPrice:', err)
+      return 0
     }
-    return 0
   }
 })
 
@@ -73,22 +92,24 @@ export default {
   exampleResponse: {
     status: 'success'
   },
+  middleware: [paymentMiddleware], // Attach paymentMiddleware here
+
   func: async (req: SendMessageRequest, res: Response): Promise<Response> => {
+    console.log('[func] Processing sendMessage request...')
+
     try {
-      await paymentMiddleware(req, res, (err?: any) => {
-        if (err != null) {
-          console.error('Payment Error:', err)
-          throw new Error('Payment required before sending messages.')
-        }
-      })
-    } catch (err) {
-      return res.status(402).json({
-        status: 'error',
-        code: 'ERR_PAYMENT_REQUIRED',
-        description: 'Payment is required before sending messages.'
-      })
-    }
-    try {
+      // **Validate Payment AFTER Middleware Runs**
+      if (req.payment == null || req.payment.satoshisPaid === undefined) {
+        console.error('[func] Payment missing or not processed correctly.')
+        return res.status(402).json({
+          status: 'error',
+          code: 'ERR_PAYMENT_REQUIRED',
+          description: 'Payment is required before sending messages.'
+        })
+      }
+
+      console.log('[func] Payment verified. Processing message...')
+
       const { message } = req.body
 
       // Request Body Validation

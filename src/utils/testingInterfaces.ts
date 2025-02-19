@@ -19,7 +19,11 @@ export interface Message {
 
 export interface SendMessageRequest extends Request {
   authrite: { identityKey: string }
-  body: { message?: Message }
+  body: {
+    message?: Message
+    priority?: boolean
+  }
+  payment?: { satoshisPaid?: number }
 }
 
 // Define Request Type
