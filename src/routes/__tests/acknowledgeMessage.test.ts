@@ -9,10 +9,26 @@ const knex = acknowledgeMessage.knex
 let queryTracker: mockKnex.Tracker
 
 // Define Mock Express Response Object
-const mockRes: Partial<Response> = {
+const mockRes: jest.Mocked<Response> = {
   status: jest.fn().mockReturnThis(),
-  json: jest.fn().mockReturnThis()
-}
+  json: jest.fn().mockReturnThis(),
+  sendStatus: jest.fn().mockReturnThis(),
+  send: jest.fn().mockReturnThis(),
+  end: jest.fn().mockReturnThis(),
+  setHeader: jest.fn().mockReturnThis(),
+  getHeader: jest.fn(),
+  getHeaders: jest.fn(),
+  header: jest.fn().mockReturnThis(),
+  type: jest.fn().mockReturnThis(),
+  format: jest.fn(),
+  location: jest.fn().mockReturnThis(),
+  redirect: jest.fn().mockReturnThis(),
+  append: jest.fn().mockReturnThis(),
+  render: jest.fn(),
+  vary: jest.fn().mockReturnThis(),
+  cookie: jest.fn().mockReturnThis(),
+  clearCookie: jest.fn().mockReturnThis()
+} as unknown as jest.Mocked<Response>
 
 let validReq: AuthriteRequest
 

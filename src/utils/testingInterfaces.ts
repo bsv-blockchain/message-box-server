@@ -23,7 +23,7 @@ export interface SendMessageRequest extends Request {
     message?: Message
     priority?: boolean
   }
-  payment?: { satoshisPaid?: number }
+  payment?: { satoshisPaid: number }
 }
 
 // Define Request Type

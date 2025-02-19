@@ -29,7 +29,7 @@ interface SendMessageRequest extends Request {
     message?: Message
     priority?: boolean
   }
-  payment?: { satoshisPaid?: number }
+  payment?: { satoshisPaid: number }
 }
 
 export function calculateMessagePrice (message: string, priority: boolean = false): number {
@@ -44,35 +44,15 @@ export function calculateMessagePrice (message: string, priority: boolean = fals
 const wallet = new WalletClient()
 
 // Create Payment Middleware
-const paymentMiddleware = createPaymentMiddleware({
+export const paymentMiddleware = createPaymentMiddleware({
   wallet,
   calculateRequestPrice: async (req) => {
-    try {
-      console.log('[paymentMiddleware] Entered calculateRequestPrice function...')
-      console.log('[paymentMiddleware] Received request body:', JSON.stringify(req.body, null, 2))
-
-      const body = req.body as { message?: { body?: string }, priority?: boolean }
-
-      if (body == null || typeof body !== 'object') {
-        console.log('[paymentMiddleware] Invalid body detected. Returning price: 0')
-        return 0
-      }
-
-      console.log('[paymentMiddleware] Body is valid. Extracting message and priority...')
-      const { message, priority = false } = body
-
-      if (message?.body != null && message.body.trim() !== '') {
-        const price = calculateMessagePrice(message.body, priority)
-        console.log(`[paymentMiddleware] Calculated price: ${price}`)
-        return price
-      }
-
-      console.log('[paymentMiddleware] Empty or missing message body. Returning price: 0')
-      return 0
-    } catch (err) {
-      console.error('[paymentMiddleware] ERROR in calculateRequestPrice:', err)
-      return 0
+    const body = req.body as { message?: { body?: string }, priority?: boolean }
+    if (body?.message?.body == null || body.message.body.trim() === '') {
+      return 0 // Free if there's no valid message body
     }
+
+    return calculateMessagePrice(body.message.body, body.priority ?? false)
   }
 })
 

@@ -9,12 +9,29 @@ const knex = sendMessage.knex
 let queryTracker: mockKnex.Tracker
 
 // Define Mock Express Response Object
-const mockRes: Partial<Response> = {
+const mockRes: jest.Mocked<Response> = {
   status: jest.fn().mockReturnThis(),
-  json: jest.fn().mockReturnThis()
-}
+  json: jest.fn().mockReturnThis(),
+  sendStatus: jest.fn().mockReturnThis(),
+  send: jest.fn().mockReturnThis(),
+  end: jest.fn().mockReturnThis(),
+  setHeader: jest.fn().mockReturnThis(),
+  getHeader: jest.fn(),
+  getHeaders: jest.fn(),
+  header: jest.fn().mockReturnThis(),
+  type: jest.fn().mockReturnThis(),
+  format: jest.fn(),
+  location: jest.fn().mockReturnThis(),
+  redirect: jest.fn().mockReturnThis(),
+  append: jest.fn().mockReturnThis(),
+  render: jest.fn(),
+  vary: jest.fn().mockReturnThis(),
+  cookie: jest.fn().mockReturnThis(),
+  clearCookie: jest.fn().mockReturnThis()
+} as unknown as jest.Mocked<Response>
 
 let validReq: SendMessageRequest
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 let validRes: { status: string }
 let validMessageBox: { messageBoxId: number, type: string }
 
@@ -322,7 +339,7 @@ describe('sendMessage', () => {
       if (step === 1) {
         q.response(1) // Simulate successful messageBox update (returning affected row count)
       } else if (step === 2) {
-        q.response([{ messageBoxId: 123 }]) // ✅ Simulate finding a valid messageBoxId
+        q.response([{ messageBoxId: 123 }]) // Simulate finding a valid messageBoxId
       } else if (step === 3) {
         q.reject({ code: 'ER_DUP_ENTRY' }) // Simulate duplicate message error
       } else {
@@ -365,5 +382,31 @@ describe('sendMessage', () => {
       status: 'error',
       code: 'ERR_INTERNAL'
     }))
+  })
+
+  it('Calls Bugsnag.notify on internal error', async () => {
+    // Mock Bugsnag
+    globalThis.Bugsnag = { notify: jest.fn() } as any
+
+    queryTracker.on('query', () => {
+      throw new Error('Unexpected failure')
+    })
+
+    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') }
+
+    await sendMessage.func(validReq, mockRes as Response)
+
+    // Ensure Bugsnag.notify was called
+    expect(globalThis.Bugsnag.notify).toHaveBeenCalledWith(expect.any(Error))
+
+    // Ensure a 500 response is sent
+    expect(mockRes.status).toHaveBeenCalledWith(500)
+    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'error',
+      code: 'ERR_INTERNAL'
+    }))
+
+    // Clean up mock
+    delete globalThis.Bugsnag
   })
 })
