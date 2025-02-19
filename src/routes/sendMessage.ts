@@ -44,7 +44,7 @@ export function calculateMessagePrice (message: string, priority: boolean = fals
 const wallet = new WalletClient()
 
 // Create Payment Middleware
-export const paymentMiddleware = createPaymentMiddleware({
+const paymentMiddleware = createPaymentMiddleware({
   wallet,
   calculateRequestPrice: async (req) => {
     const body = req.body as { message?: { body?: string }, priority?: boolean }

@@ -2,7 +2,7 @@ const dotenv = require('dotenv')
 
 dotenv.config()
 
-const config = {
+const baseConfig = {
   client: 'mysql',
   connection: (() => {
     try {
@@ -15,7 +15,7 @@ const config = {
   useNullAsDefault: true,
   migrations: {
     directory: './src/migrations',
-    extension: 'js' // Change to 'ts' only if TypeScript is properly compiled
+    extension: 'js'
   },
   pool: {
     min: 0,
@@ -25,9 +25,23 @@ const config = {
 }
 
 const knexConfig = {
-  development: config,
-  staging: config,
-  production: config
+  development: baseConfig,
+  staging: baseConfig,
+  production: baseConfig,
+  test: {
+    client: 'sqlite3',
+    connection: { filename: './test.sqlite3' }, // File-based SQLite DB for persistent test data
+    useNullAsDefault: true,
+    migrations: {
+      directory: './src/migrations',
+      extension: 'js'
+    },
+    pool: {
+      min: 0,
+      max: 1, // Small pool since SQLite doesn't support concurrent writes well
+      idleTimeoutMillis: 5000
+    }
+  }
 }
 
 module.exports = knexConfig
