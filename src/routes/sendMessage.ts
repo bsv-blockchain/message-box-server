@@ -100,7 +100,6 @@ export default {
     try {
       // **Validate Payment AFTER Middleware Runs**
       if (req.payment == null || req.payment.satoshisPaid === undefined) {
-        console.error('[func] Payment missing or not processed correctly.')
         return res.status(402).json({
           status: 'error',
           code: 'ERR_PAYMENT_REQUIRED',
@@ -225,7 +224,6 @@ export default {
         message: `Your message has been sent to ${message.recipient}`
       })
     } catch (e) {
-      console.error(e)
       if (globalThis.Bugsnag != null) globalThis.Bugsnag.notify(e)
       return res.status(500).json({
         status: 'error',

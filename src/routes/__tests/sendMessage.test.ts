@@ -243,5 +243,127 @@ describe('sendMessage', () => {
     const price = calculateMessagePrice(message)
     expect(price).toBe(500 + (10 * 50)) // Base price + 10KB * 50
   })
-  // *******************************************************************************************************/
+
+  it('Returns error if payment is missing or not processed correctly', async () => {
+    delete validReq.payment // Ensure it's fully removed
+
+    await sendMessage.func(validReq, mockRes as Response)
+
+    // Ensure the correct error response is returned
+    expect(mockRes.status).toHaveBeenCalledWith(402)
+    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'error',
+      code: 'ERR_PAYMENT_REQUIRED'
+    }))
+  })
+
+  it('Returns error if messageId is missing', async () => {
+    if (validReq.body.message !== undefined && validReq.body.message !== null) {
+      validReq.body.message.messageId = undefined as unknown as string
+    }
+
+    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') } // Simulate middleware behavior
+
+    await sendMessage.func(validReq, mockRes as Response)
+
+    expect(mockRes.status).toHaveBeenCalledWith(400)
+    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'error',
+      code: 'ERR_INVALID_MESSAGEID',
+      description: 'Please provide a unique counterparty-specific messageID!'
+    }))
+  })
+
+  it('Creates a messageBox when it does not exist', async () => {
+    queryTracker.on('query', (q, step: number) => {
+      if (step === 1) {
+        q.response(0) // Simulate that the messageBox does not exist
+      } else if (step === 2) {
+        q.response([validMessageBox]) // Simulate messageBox being inserted
+      } else if (step === 3) {
+        q.response([validMessageBox]) // Ensure this step returns the correct messageBox
+      } else {
+        q.response([]) // Default response
+      }
+    })
+
+    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') } // Simulate middleware behavior
+
+    await sendMessage.func(validReq, mockRes as Response)
+
+    expect(mockRes.status).toHaveBeenCalledWith(200)
+    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'success'
+    }))
+  })
+
+  it('Returns error if the messageBox is not found', async () => {
+    queryTracker.on('query', (q, step) => {
+      if (step === 1) {
+        q.response(1) // Simulate that the messageBox exists
+      } else if (step === 2) {
+        q.response([]) // Simulate that no messageBoxRecord was found
+      }
+    })
+
+    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') } // Simulate middleware behavior
+
+    await sendMessage.func(validReq, mockRes as Response)
+
+    expect(mockRes.status).toHaveBeenCalledWith(400)
+    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'error',
+      code: 'ERR_MESSAGEBOX_NOT_FOUND'
+    }))
+  })
+
+  it('Returns error if message is duplicate', async () => {
+    queryTracker.on('query', (q, step: number) => {
+      if (step === 1) {
+        q.response(1) // Simulate successful messageBox update (returning affected row count)
+      } else if (step === 2) {
+        q.response([{ messageBoxId: 123 }]) // ✅ Simulate finding a valid messageBoxId
+      } else if (step === 3) {
+        q.reject({ code: 'ER_DUP_ENTRY' }) // Simulate duplicate message error
+      } else {
+        q.response([]) // Default response for unexpected queries
+      }
+    })
+
+    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') } // Simulate middleware behavior
+
+    await sendMessage.func(validReq, mockRes as Response)
+
+    expect(mockRes.status).toHaveBeenCalledWith(400)
+    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'error',
+      code: 'ERR_DUPLICATE_MESSAGE',
+      description: 'Your message has already been sent to the intended recipient!'
+    }))
+  })
+
+  it('Returns internal error if unexpected error occurs', async () => {
+    queryTracker.on('query', () => {
+      throw new Error('Unexpected failure') // Simulating an unexpected database failure
+    })
+
+    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') } // Simulate middleware behavior
+
+    console.log('[TEST] Sending request that should trigger an internal error...')
+
+    await sendMessage.func(validReq, mockRes as Response)
+
+    console.log('[TEST] Checking if response was handled correctly...')
+
+    // Ensure the response status is set
+    expect(mockRes.status).toHaveBeenCalledTimes(1)
+    expect(mockRes.status).toHaveBeenCalledWith(500)
+
+    // Ensure the correct JSON error response is returned
+    expect(mockRes.json).toHaveBeenCalledTimes(1)
+    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'error',
+      code: 'ERR_INTERNAL'
+    }))
+  })
 })
