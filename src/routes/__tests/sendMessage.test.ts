@@ -1,5 +1,5 @@
 /* eslint-env jest */
-import sendMessage from '../sendMessage'
+import sendMessage, { calculateMessagePrice } from '../sendMessage'
 import mockKnex from 'mock-knex'
 import { Response } from 'express'
 import { Message, SendMessageRequest } from '../../utils/testingInterfaces'
@@ -238,5 +238,50 @@ describe('sendMessage', () => {
       throw new Error('Failed')
     })
     await expect(sendMessage.func(validReq, mockRes as Response)).rejects.toThrow()
+  })
+
+  it('Returns base price for an empty message', () => {
+    const price = calculateMessagePrice('')
+    expect(price).toBe(500) // Base price only
+  })
+
+  it('Calculates price for a small message (below 1KB)', () => {
+    const price = calculateMessagePrice('Hello, world!')
+    expect(price).toBe(500 + 50) // Base price only
+  })
+
+  it('Calculates price for a 2KB message', () => {
+    const message = 'a'.repeat(2048) // 2KB
+    const price = calculateMessagePrice(message)
+    expect(price).toBe(500 + 100) // Base price + 2KB * 50 sat
+  })
+
+  it('Adds priority fee when enabled', () => {
+    const price = calculateMessagePrice('Hello', true)
+    expect(price).toBe(500 + 200 + 50) // Base price + priority fee
+  })
+
+  it('Handles large messages (5KB)', () => {
+    const message = 'a'.repeat(5120) // 5KB
+    const price = calculateMessagePrice(message)
+    expect(price).toBe(500 + (5 * 50)) // Base price + 5KB * 50
+  })
+
+  it('Handles edge case of exactly 1KB message', () => {
+    const message = 'a'.repeat(1024) // Exactly 1KB
+    const price = calculateMessagePrice(message)
+    expect(price).toBe(500 + 50) // Base price + 1KB * 50
+  })
+
+  it('Handles edge case of 1KB + 1 byte message', () => {
+    const message = 'a'.repeat(1025) // 1KB + 1 byte
+    const price = calculateMessagePrice(message)
+    expect(price).toBe(500 + 100) // Rounded up to 2KB * 50
+  })
+
+  it('Handles messages larger than 10KB', () => {
+    const message = 'a'.repeat(10240) // 10KB
+    const price = calculateMessagePrice(message)
+    expect(price).toBe(500 + (10 * 50)) // Base price + 10KB * 50
   })
 })
