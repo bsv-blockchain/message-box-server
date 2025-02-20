@@ -40,13 +40,7 @@ const wallet = new WalletClient()
 const sessionManager = new SessionManager()
 
 // Create HTTP server
-const http = createServer((req, res) => {
-  app(req, res).catch((err) => {
-    console.error('Unhandled server error:', err)
-    res.statusCode = 500
-    res.end('Internal Server Error')
-  })
-})
+const http = createServer(app)
 
 const io = new AuthSocketServer(http, {
   wallet, // Required for signing
@@ -95,6 +89,9 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // Configure WebSocket Events (Now Using @bsv/authsocket)
 io.on('connection', (socket) => {
+  // console.log('[WEBSOCKET] Raw socket object on connection:', socket)
+  console.log('[WEBSOCKET] Raw identityKey received:', socket.identityKey)
+
   const identityKey = socket.identityKey ?? 'unknown'
   console.log(`New authenticated WebSocket connection from: ${identityKey}`)
 
