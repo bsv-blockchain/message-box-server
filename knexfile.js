@@ -1,4 +1,4 @@
-const dotenv = require('dotenv')
+import dotenv from 'dotenv'
 
 dotenv.config()
 
@@ -30,7 +30,7 @@ const knexConfig = {
   production: baseConfig,
   test: {
     client: 'sqlite3',
-    connection: { filename: './test.sqlite3' }, // File-based SQLite DB for persistent test data
+    connection: { filename: './test.sqlite3' }, // SQLite for testing
     useNullAsDefault: true,
     migrations: {
       directory: './src/migrations',
@@ -44,4 +44,5 @@ const knexConfig = {
   }
 }
 
-module.exports = knexConfig
+// ✅ Export in a way that works with both CommonJS and ESM
+export default knexConfig

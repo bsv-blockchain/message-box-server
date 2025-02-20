@@ -1,9 +1,11 @@
+/** @type {import('ts-jest').JestConfigWithTsJest} */
 import type { JestConfigWithTsJest } from 'ts-jest'
 
 const config: JestConfigWithTsJest = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   extensionsToTreatAsEsm: ['.ts'],
+  testPathIgnorePatterns: ['dist/'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   transform: {
     '^.+\\.ts?$': 'ts-jest'

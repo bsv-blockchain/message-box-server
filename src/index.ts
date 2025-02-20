@@ -214,7 +214,7 @@ app.use((req: Request, res: Response) => {
 // Start API Server
 http.listen(HTTP_PORT, () => {
   console.log('MessageBox listening on port', HTTP_PORT)
-  if (NODE_ENV !== 'development') {
+  if (NODE_ENV !== 'development' && process.env.SKIP_NGINX !== 'true') {
     spawn('nginx', [], { stdio: ['inherit', 'inherit', 'inherit'] })
   }
 })
