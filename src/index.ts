@@ -25,6 +25,16 @@ const {
   ROUTING_PREFIX = ''
 } = process.env
 
+const knex: knexLib.Knex = (knexLib as any).default?.(
+  NODE_ENV === 'production' || NODE_ENV === 'staging'
+    ? knexConfig.production
+    : knexConfig.development
+) ?? (knexLib as any)(
+  NODE_ENV === 'production' || NODE_ENV === 'staging'
+    ? knexConfig.production
+    : knexConfig.development
+)
+
 // Ensure PORT is properly handled
 const parsedPort = Number(PORT)
 const parsedEnvPort = Number(process.env.HTTP_PORT)
@@ -220,4 +230,12 @@ http.listen(HTTP_PORT, () => {
   if (NODE_ENV !== 'development' && process.env.SKIP_NGINX !== 'true') {
     spawn('nginx', [], { stdio: ['inherit', 'inherit', 'inherit'] })
   }
+
+  (async () => {
+    await delay(5000)
+    await knex.migrate.latest()
+  })().catch((error) => { console.error(error) })
 })
+
+const delay = async (ms: number): Promise<void> =>
+  await new Promise(resolve => setTimeout(resolve, ms));

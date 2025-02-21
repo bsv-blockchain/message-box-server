@@ -216,7 +216,7 @@ export default {
         message: `Your message has been sent to ${message.recipient}`
       })
     } catch (e) {
-      if (globalThis.Bugsnag != null) globalThis.Bugsnag.notify(e)
+      // if (globalThis.Bugsnag != null) globalThis.Bugsnag.notify(e)
       return res.status(500).json({
         status: 'error',
         code: 'ERR_INTERNAL',
