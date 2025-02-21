@@ -1,18 +1,28 @@
 {
-  "files": [],
   "compilerOptions": {
+    "target": "es2017",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "outDir": "out",
+    "allowJs": true,
     "esModuleInterop": true,
-    "strictNullChecks": true
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noImplicitAny": false,
+    "declaration": true,
+    "declarationMap": true,
+    "rootDir": ".",
+    "composite": true,
+    "noImplicitOverride": true
   },
-  "references": [
-    {
-      "path": "tsconfig.esm.json"
-    },
-    {
-      "path": "tsconfig.cjs.json"
-    },
-    {
-      "path": "tsconfig.types.json"
-    }
-  ]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "jest.config.ts"
+  ],
+  "references": []
 }

@@ -12,3 +12,4 @@ app.production.yaml
 app.staging.yaml
 
 /example/public/
+out
