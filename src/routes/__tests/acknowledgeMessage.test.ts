@@ -1,6 +1,6 @@
 /* eslint-env jest */
 import acknowledgeMessage from '../acknowledgeMessage'
-import mockKnex from 'mock-knex'
+import * as mockKnex from 'mock-knex'
 import { AuthriteRequest } from '../../utils/testingInterfaces'
 import { Response } from 'express'
 
@@ -34,7 +34,7 @@ let validReq: AuthriteRequest
 
 describe('acknowledgeMessage', () => {
   beforeAll(() => {
-    mockKnex.mock(knex)
+    (mockKnex as any).mock(knex)
   })
 
   beforeEach(() => {
@@ -42,7 +42,7 @@ describe('acknowledgeMessage', () => {
       throw e
     })
 
-    queryTracker = mockKnex.getTracker() as mockKnex.Tracker
+    queryTracker = (mockKnex as any).getTracker() as mockKnex.Tracker
     queryTracker.install()
 
     validReq = {
@@ -66,7 +66,7 @@ describe('acknowledgeMessage', () => {
   })
 
   afterAll(() => {
-    mockKnex.unmock(knex)
+    (mockKnex as any).unmock(knex)
   })
 
   it('Throws an error if messageId is missing', async () => {

@@ -3,7 +3,7 @@ import dotenv from 'dotenv'
 dotenv.config()
 
 const baseConfig = {
-  client: 'mysql',
+  client: 'mysql2',
   connection: (() => {
     try {
       return process.env.KNEX_DB_CONNECTION ? JSON.parse(process.env.KNEX_DB_CONNECTION) : undefined
@@ -15,7 +15,8 @@ const baseConfig = {
   useNullAsDefault: true,
   migrations: {
     directory: './src/migrations',
-    extension: 'js'
+    extension: 'ts',
+    loadExtensions: ['.ts', '.js']
   },
   pool: {
     min: 0,
@@ -34,7 +35,8 @@ const knexConfig = {
     useNullAsDefault: true,
     migrations: {
       directory: './src/migrations',
-      extension: 'js'
+      extension: 'ts',
+      loadExtensions: ['.ts', '.js']
     },
     pool: {
       min: 0,
@@ -44,5 +46,4 @@ const knexConfig = {
   }
 }
 
-// ✅ Export in a way that works with both CommonJS and ESM
 export default knexConfig

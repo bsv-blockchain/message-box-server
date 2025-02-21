@@ -15,7 +15,8 @@
     "declarationMap": true,
     "rootDir": ".",
     "composite": true,
-    "noImplicitOverride": true
+    "noImplicitOverride": true,
+    "baseUrl": "."
   },
   "include": [
     "src/**/*"

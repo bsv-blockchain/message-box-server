@@ -1,6 +1,6 @@
 /* eslint-env jest */
 import sendMessage, { calculateMessagePrice } from '../sendMessage'
-import mockKnex from 'mock-knex'
+import * as mockKnex from 'mock-knex'
 import { Response } from 'express'
 import { Message, SendMessageRequest } from '../../utils/testingInterfaces'
 
@@ -37,7 +37,7 @@ let validMessageBox: { messageBoxId: number, type: string }
 
 describe('sendMessage', () => {
   beforeAll(() => {
-    mockKnex.mock(knex)
+    (mockKnex as any).mock(knex)
   })
 
   beforeEach(() => {
@@ -45,7 +45,7 @@ describe('sendMessage', () => {
       throw e
     })
 
-    queryTracker = mockKnex.getTracker() as mockKnex.Tracker
+    queryTracker = (mockKnex as any).getTracker() as mockKnex.Tracker
     queryTracker.install()
 
     // Mock Data
@@ -83,7 +83,7 @@ describe('sendMessage', () => {
   })
 
   afterAll(() => {
-    mockKnex.unmock(knex)
+    (mockKnex as any).unmock(knex)
   })
 
   it('Throws an error if message is missing', async () => {

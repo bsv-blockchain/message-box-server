@@ -1,6 +1,6 @@
 /* eslint-env jest */
 import listMessages from '../listMessages'
-import mockKnex from 'mock-knex'
+import * as mockKnex from 'mock-knex'
 import { Response } from 'express'
 import { AuthriteRequestMB } from '../../utils/testingInterfaces'
 
@@ -38,7 +38,7 @@ let validMessages: Array<{ sender: string, messageBoxId: number, body: string }>
 
 describe('listMessages', () => {
   beforeAll(() => {
-    mockKnex.mock(knex)
+    (mockKnex as any).mock(knex)
   })
 
   beforeEach(() => {
@@ -46,7 +46,7 @@ describe('listMessages', () => {
       throw e
     })
 
-    queryTracker = mockKnex.getTracker() as mockKnex.Tracker
+    queryTracker = (mockKnex as any).getTracker() as mockKnex.Tracker
     queryTracker.install()
 
     validMessages = [{
@@ -87,7 +87,7 @@ describe('listMessages', () => {
   })
 
   afterAll(() => {
-    mockKnex.unmock(knex)
+    (mockKnex as any).unmock(knex)
   })
 
   it('Throws an error if a messageBox is not provided', async () => {
