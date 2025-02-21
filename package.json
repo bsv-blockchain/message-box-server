@@ -1,7 +1,7 @@
 {
   "name": "messagebox",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "./out/src/index.js",
   "type": "module",
   "scripts": {
     "start": "node out/src/index.js",
@@ -22,12 +22,14 @@
   "devDependencies": {
     "@eslint/js": "^9.20.0",
     "@types/body-parser": "^1.19.5",
+    "@types/dotenv": "^6.1.1",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
     "@types/knex": "^0.15.2",
     "@types/mock-knex": "^0.4.8",
     "@types/mysql": "^2.15.26",
     "@types/node": "^22.13.1",
+    "@types/prettyjson": "^0.0.33",
     "@types/supertest": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^8.24.0",
     "@typescript-eslint/parser": "^8.24.0",

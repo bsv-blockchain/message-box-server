@@ -8,6 +8,8 @@ import { createServer } from 'http'
 import { AuthSocketServer } from '@bsv/authsocket'
 import { createAuthMiddleware } from '@bsv/auth-express-middleware'
 import { WalletClient, SessionManager } from '@bsv/sdk'
+import knexConfig from '../knexfile.js'
+import * as knexLib from 'knex'
 
 dotenv.config()
 
@@ -23,6 +25,16 @@ const {
   ROUTING_PREFIX = ''
 } = process.env
 
+const knex: knexLib.Knex = (knexLib as any).default?.(
+  NODE_ENV === 'production' || NODE_ENV === 'staging'
+    ? knexConfig.production
+    : knexConfig.development
+) ?? (knexLib as any)(
+  NODE_ENV === 'production' || NODE_ENV === 'staging'
+    ? knexConfig.production
+    : knexConfig.development
+)
+
 // Ensure PORT is properly handled
 const parsedPort = Number(PORT)
 const parsedEnvPort = Number(process.env.HTTP_PORT)
@@ -30,10 +42,10 @@ const parsedEnvPort = Number(process.env.HTTP_PORT)
 const HTTP_PORT: number = NODE_ENV !== 'development'
   ? 3000
   : !isNaN(parsedPort) && parsedPort > 0
-      ? parsedPort
-      : !isNaN(parsedEnvPort) && parsedEnvPort > 0
-          ? parsedEnvPort
-          : 8080
+    ? parsedPort
+    : !isNaN(parsedEnvPort) && parsedEnvPort > 0
+      ? parsedEnvPort
+      : 8080
 
 // Initialize Wallet for Authentication
 const wallet = new WalletClient()
@@ -214,4 +226,12 @@ http.listen(HTTP_PORT, () => {
   if (NODE_ENV !== 'development' && process.env.SKIP_NGINX !== 'true') {
     spawn('nginx', [], { stdio: ['inherit', 'inherit', 'inherit'] })
   }
+
+  (async () => {
+    await delay(5000)
+    await knex.migrate.latest()
+  })().catch((error) => { console.error(error) })
 })
+
+const delay = async (ms: number): Promise<void> =>
+  await new Promise(resolve => setTimeout(resolve, ms));

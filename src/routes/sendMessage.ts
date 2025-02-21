@@ -32,7 +32,7 @@ interface SendMessageRequest extends Request {
   payment?: { satoshisPaid: number }
 }
 
-export function calculateMessagePrice (message: string, priority: boolean = false): number {
+export function calculateMessagePrice(message: string, priority: boolean = false): number {
   const basePrice = 500 // Base fee in satoshis
   const sizeFactor = Math.ceil(Buffer.byteLength(message, 'utf8') / 1024) * 50 // 50 satoshis per KB
   const priorityFee = priority ? 200 : 0 // Additional fee for priority messages
@@ -204,7 +204,7 @@ export default {
         message: `Your message has been sent to ${message.recipient}`
       })
     } catch (e) {
-      if (globalThis.Bugsnag != null) globalThis.Bugsnag.notify(e)
+      // if (globalThis.Bugsnag != null) globalThis.Bugsnag.notify(e)
       return res.status(500).json({
         status: 'error',
         code: 'ERR_INTERNAL',
