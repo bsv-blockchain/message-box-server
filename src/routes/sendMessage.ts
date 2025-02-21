@@ -2,9 +2,12 @@ import { Request, Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
 import { createPaymentMiddleware } from '@bsv/payment-express-middleware'
-import { WalletClient } from '@bsv/sdk'
+import { ProtoWallet, PrivateKey } from '@bsv/sdk'
+import { webcrypto } from 'crypto';
 
-const { NODE_ENV = 'development' } = process.env
+(global as any).self = { crypto: webcrypto }
+
+const { NODE_ENV = 'development', SERVER_PRIVATE_KEY } = process.env
 
 const knex: knexLib.Knex = (knexLib as any).default?.(
   NODE_ENV === 'production' || NODE_ENV === 'staging'
@@ -32,6 +35,14 @@ interface SendMessageRequest extends Request {
   payment?: { satoshisPaid: number }
 }
 
+// Ensure SERVER_PRIVATE_KEY is available
+if (SERVER_PRIVATE_KEY == null || SERVER_PRIVATE_KEY === '') {
+  throw new Error('SERVER_PRIVATE_KEY is not defined in the environment variables.')
+}
+const privateKey = PrivateKey.fromRandom()
+console.log('Generated Private Key:', privateKey.toHex())
+const wallet = new ProtoWallet(privateKey)
+
 export function calculateMessagePrice (message: string, priority: boolean = false): number {
   const basePrice = 500 // Base fee in satoshis
   const sizeFactor = Math.ceil(Buffer.byteLength(message, 'utf8') / 1024) * 50 // 50 satoshis per KB
@@ -40,18 +51,14 @@ export function calculateMessagePrice (message: string, priority: boolean = fals
   return basePrice + sizeFactor + priorityFee
 }
 
-// Initialize Wallet
-const wallet = new WalletClient()
-
 // Create Payment Middleware
 const paymentMiddleware = createPaymentMiddleware({
-  wallet,
+  wallet, // Use ProtoWallet instead of WalletClient
   calculateRequestPrice: async (req) => {
     const body = req.body as { message?: { body?: string }, priority?: boolean }
     if (body?.message?.body == null || body.message.body.trim() === '') {
       return 0 // Free if there's no valid message body
     }
-
     return calculateMessagePrice(body.message.body, body.priority ?? false)
   }
 })
@@ -106,7 +113,12 @@ export default {
           description: 'Message properties must be contained in a message object!'
         })
       }
-      if (message.recipient === undefined || message.recipient === null || typeof message.recipient !== 'string' || message.recipient.trim() === '') {
+      if (
+        message.recipient === undefined ||
+        message.recipient === null ||
+        typeof message.recipient !== 'string' ||
+        message.recipient.trim() === ''
+      ) {
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_RECIPIENT',

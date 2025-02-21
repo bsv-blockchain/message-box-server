@@ -7,7 +7,10 @@ import { spawn } from 'child_process'
 import { createServer } from 'http'
 import { AuthSocketServer } from '@bsv/authsocket'
 import { createAuthMiddleware } from '@bsv/auth-express-middleware'
-import { WalletClient, SessionManager } from '@bsv/sdk'
+import { ProtoWallet, PrivateKey } from '@bsv/sdk'
+import { webcrypto } from 'crypto';
+
+(global as any).self = { crypto: webcrypto }
 
 dotenv.config()
 
@@ -16,7 +19,6 @@ const app: Express = express()
 const {
   NODE_ENV = 'development',
   PORT,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   SERVER_PRIVATE_KEY,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   HOSTING_DOMAIN,
@@ -36,15 +38,18 @@ const HTTP_PORT: number = NODE_ENV !== 'development'
           : 8080
 
 // Initialize Wallet for Authentication
-const wallet = new WalletClient()
-const sessionManager = new SessionManager()
+if (SERVER_PRIVATE_KEY == null || SERVER_PRIVATE_KEY === '') {
+  throw new Error('SERVER_PRIVATE_KEY is not defined in the environment variables.')
+}
+const privateKey = PrivateKey.fromRandom()
+console.log('Generated Private Key:', privateKey.toHex())
+const wallet = new ProtoWallet(privateKey)
 
 // Create HTTP server
 const http = createServer(app)
 
 const io = new AuthSocketServer(http, {
   wallet, // Required for signing
-  sessionManager, // Manages authentication sessions
   cors: {
     origin: '*', // Allows all origins for WebSockets
     methods: ['GET', 'POST']
@@ -58,7 +63,8 @@ export { io, http, HTTP_PORT, ROUTING_PREFIX }
 
 // Initialize Auth Middleware
 const authMiddleware = createAuthMiddleware({
-  wallet
+  wallet,
+  allowUnauthenticated: false
 })
 
 // Force HTTPS unless in development mode
