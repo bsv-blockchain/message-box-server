@@ -341,7 +341,7 @@ describe('sendMessage', () => {
       } else if (step === 2) {
         q.response([{ messageBoxId: 123 }]) // Simulate finding a valid messageBoxId
       } else if (step === 3) {
-        q.reject({ code: 'ER_DUP_ENTRY' }) // Simulate duplicate message error
+        q.reject({ code: 'ER_DUP_ENTRY' } as any) // Simulate duplicate message error
       } else {
         q.response([]) // Default response for unexpected queries
       }

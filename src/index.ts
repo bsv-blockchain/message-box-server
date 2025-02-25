@@ -8,7 +8,9 @@ import { createServer } from 'http'
 import { AuthSocketServer } from '@bsv/authsocket'
 import { createAuthMiddleware } from '@bsv/auth-express-middleware'
 import { ProtoWallet, PrivateKey } from '@bsv/sdk'
-import { webcrypto } from 'crypto';
+import { webcrypto } from 'crypto'
+import knexLib from 'knex'
+import knexConfig from '../knexfile.js'
 
 (global as any).self = { crypto: webcrypto }
 
@@ -56,6 +58,7 @@ console.log('Generated Private Key:', privateKey.toHex())
 const wallet = new ProtoWallet(privateKey)
 
 // Create HTTP server
+/* eslint-disable @typescript-eslint/no-misused-promises */
 const http = createServer(app)
 
 const io = new AuthSocketServer(http, {
@@ -238,4 +241,4 @@ http.listen(HTTP_PORT, () => {
 })
 
 const delay = async (ms: number): Promise<void> =>
-  await new Promise(resolve => setTimeout(resolve, ms));
+  await new Promise(resolve => setTimeout(resolve, ms))
