@@ -54,7 +54,7 @@
     "@bsv/auth-express-middleware": "^1.0.2",
     "@bsv/authsocket": "^1.0.0",
     "@bsv/payment-express-middleware": "^1.0.1",
-    "@bsv/sdk": "^1.3.16",
+    "@bsv/sdk": "^1.3.22",
     "authrite-express": "^0.4.36",
     "body-parser": "^1.20.3",
     "dotenv": "^8.6.0",

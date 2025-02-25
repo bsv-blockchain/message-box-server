@@ -7,7 +7,7 @@ import { spawn } from 'child_process'
 import { createServer } from 'http'
 import { AuthSocketServer } from '@bsv/authsocket'
 import { createAuthMiddleware } from '@bsv/auth-express-middleware'
-import { ProtoWallet, PrivateKey } from '@bsv/sdk'
+import { ProtoWallet, PrivateKey, PublicKey } from '@bsv/sdk'
 import { webcrypto } from 'crypto'
 import knexLib from 'knex'
 import knexConfig from '../knexfile.js'
@@ -50,12 +50,18 @@ const HTTP_PORT: number = NODE_ENV !== 'development'
           : 8080
 
 // Initialize Wallet for Authentication
-if (SERVER_PRIVATE_KEY == null || SERVER_PRIVATE_KEY === '') {
+if (SERVER_PRIVATE_KEY === undefined || SERVER_PRIVATE_KEY === null || SERVER_PRIVATE_KEY.trim() === '') {
   throw new Error('SERVER_PRIVATE_KEY is not defined in the environment variables.')
 }
+
 const privateKey = PrivateKey.fromRandom()
-console.log('Generated Private Key:', privateKey.toHex())
+console.log('[DEBUG] Generated Private Key:', privateKey.toHex())
+
 const wallet = new ProtoWallet(privateKey)
+
+// Check the derived public key
+const publicKey = privateKey.toPublicKey()
+console.log('[DEBUG] Derived Public Key:', publicKey.toString())
 
 // Create HTTP server
 /* eslint-disable @typescript-eslint/no-misused-promises */
@@ -78,6 +84,36 @@ export { io, http, HTTP_PORT, ROUTING_PREFIX }
 const authMiddleware = createAuthMiddleware({
   wallet,
   allowUnauthenticated: false
+})
+
+// Debug logs before and after auth middleware runs
+app.use((req: Request, res: Response, next: NextFunction) => {
+  console.log('[DEBUG] Incoming Auth Request:', req.method, req.url)
+  console.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
+
+  if (req.body !== undefined && req.body !== null) {
+    console.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2))
+
+    if (req.body.identityKey !== undefined && req.body.identityKey !== null) {
+      console.log(`[DEBUG] Received identityKey: ${String(req.body.identityKey)}`)
+
+      try {
+        const parsedPublicKey = PublicKey.fromString(req.body.identityKey)
+        console.log('[DEBUG] Parsed Public Key Successfully:', parsedPublicKey.toString())
+      } catch (error) {
+        console.error('[ERROR] Failed to parse identityKey:', error)
+      }
+    }
+  }
+
+  next()
+})
+
+app.use(authMiddleware)
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  console.log('[DEBUG] After Authentication Middleware:', req.url)
+  next()
 })
 
 // Force HTTPS unless in development mode
@@ -106,64 +142,35 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   }
 })
 
-// Configure WebSocket Events (Now Using @bsv/authsocket)
+// Log all unauthorized authentication attempts
+app.use((req, res, next) => {
+  res.on('finish', () => {
+    if (res.statusCode === 401) {
+      console.error('[AUTH ERROR] 401 Unauthorized:', req.url)
+      console.error('[AUTH ERROR] Headers:', JSON.stringify(req.headers, null, 2))
+      console.error('[AUTH ERROR] Body:', JSON.stringify(req.body, null, 2))
+    }
+  })
+  next()
+})
+
+// Configure WebSocket Events
 io.on('connection', (socket) => {
-  // console.log('[WEBSOCKET] Raw socket object on connection:', socket)
   console.log('[WEBSOCKET] Raw identityKey received:', socket.identityKey)
+
+  try {
+    if (typeof socket.identityKey === 'string' && socket.identityKey.trim() !== '') {
+      const parsedIdentityKey = PublicKey.fromString(socket.identityKey)
+      console.log('[DEBUG] Parsed WebSocket Identity Key Successfully:', parsedIdentityKey.toString())
+    } else {
+      console.warn('[WARN] WebSocket connection received without identity key.')
+    }
+  } catch (error) {
+    console.error('[ERROR] Failed to parse WebSocket identity key:', error)
+  }
 
   const identityKey = socket.identityKey ?? 'unknown'
   console.log(`New authenticated WebSocket connection from: ${identityKey}`)
-
-  socket.on('joinPrivateRoom', (roomId: string) => {
-    void (async () => {
-      try {
-        await socket.ioSocket.join(roomId)
-        console.log(`User joined private room: ${roomId}`)
-      } catch (error) {
-        console.error(`Failed to join private room: ${roomId}`, error)
-      }
-    })()
-  })
-
-  socket.on('joinRoom', (roomId: string) => {
-    void (async () => {
-      if (socket.identityKey != null && roomId.startsWith(socket.identityKey)) {
-        try {
-          await socket.ioSocket.join(roomId)
-          console.log(`User joined room: ${roomId}`)
-        } catch (error) {
-          console.error(`Failed to join room: ${roomId}`, error)
-        }
-      } else {
-        console.warn(`Unauthorized room join attempt by: ${socket.identityKey ?? 'unknown'}`)
-      }
-    })()
-  })
-
-  socket.on('leaveRoom', (roomId: string) => {
-    void (async () => {
-      try {
-        await socket.ioSocket.leave(roomId)
-        console.log(`User left room: ${roomId}`)
-      } catch (error) {
-        console.error(`Failed to leave room: ${roomId}`, error)
-      }
-    })()
-  })
-
-  socket.on('sendMessage', ({ roomId, message }: { roomId: string, message: any }) => {
-    if (socket.identityKey === null || socket.identityKey === undefined) {
-      console.warn('Unauthorized message attempt from unidentified socket.')
-      return
-    }
-
-    const dataToSend = {
-      sender: socket.identityKey,
-      message: typeof message === 'object' && Object.keys(message).length !== 0 ? message : String(message)
-    }
-
-    socket.ioSocket.broadcast.to(roomId).emit(`sendMessage-${roomId}`, dataToSend)
-  })
 
   socket.on('disconnect', (reason: string) => {
     console.log(`Disconnected: ${reason}`)
@@ -213,6 +220,11 @@ app.use(authMiddleware)
 postAuthrite.forEach((route) => {
   app[route.type as 'get' | 'post' | 'put' | 'delete'](
     `${String(ROUTING_PREFIX)}${String(route.path)}`,
+    (req, res, next) => {
+      console.log('[DEBUG] Authenticated Request to:', req.url)
+      console.log('[DEBUG] User Identity:', req.body.identityKey ?? 'Not Provided')
+      next()
+    },
     route.func as unknown as (req: Request, res: Response, next: NextFunction) => void
   )
 })

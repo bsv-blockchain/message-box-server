@@ -2,8 +2,8 @@ import { Request, Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
 import { createPaymentMiddleware } from '@bsv/payment-express-middleware'
-import { ProtoWallet, PrivateKey } from '@bsv/sdk'
-import { webcrypto } from 'crypto';
+import { ProtoWallet, PrivateKey, PublicKey } from '@bsv/sdk'
+import { webcrypto } from 'crypto'
 
 (global as any).self = { crypto: webcrypto }
 
@@ -36,11 +36,11 @@ interface SendMessageRequest extends Request {
 }
 
 // Ensure SERVER_PRIVATE_KEY is available
-if (SERVER_PRIVATE_KEY == null || SERVER_PRIVATE_KEY === '') {
+if (SERVER_PRIVATE_KEY === undefined || SERVER_PRIVATE_KEY === null || SERVER_PRIVATE_KEY.trim() === '') {
   throw new Error('SERVER_PRIVATE_KEY is not defined in the environment variables.')
 }
 const privateKey = PrivateKey.fromRandom()
-console.log('Generated Private Key:', privateKey.toHex())
+console.log('[DEBUG] Generated Private Key:', privateKey.toHex())
 const wallet = new ProtoWallet(privateKey)
 
 export function calculateMessagePrice (message: string, priority: boolean = false): number {
@@ -53,10 +53,10 @@ export function calculateMessagePrice (message: string, priority: boolean = fals
 
 // Create Payment Middleware
 const paymentMiddleware = createPaymentMiddleware({
-  wallet, // Use ProtoWallet instead of WalletClient
+  wallet,
   calculateRequestPrice: async (req) => {
     const body = req.body as { message?: { body?: string }, priority?: boolean }
-    if (body?.message?.body == null || body.message.body.trim() === '') {
+    if (body?.message?.body == null || body?.message?.body.trim() === '') {
       return 0 // Free if there's no valid message body
     }
     return calculateMessagePrice(body.message.body, body.priority ?? false)
@@ -76,17 +76,18 @@ export default {
       body: '{}'
     }
   },
-  exampleResponse: {
-    status: 'success'
-  },
+  exampleResponse: { status: 'success' },
   middleware: [paymentMiddleware], // Attach paymentMiddleware here
 
   func: async (req: SendMessageRequest, res: Response): Promise<Response> => {
-    console.log('[func] Processing sendMessage request...')
+    console.log('[DEBUG] Processing /sendMessage request...')
+    console.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
+    console.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2))
 
     try {
       // **Validate Payment AFTER Middleware Runs**
-      if (req.payment == null || req.payment.satoshisPaid === undefined) {
+      if (req.payment === null || req.payment === undefined || req.payment.satoshisPaid === undefined) {
+        console.error('[ERROR] Payment is required but missing!')
         return res.status(402).json({
           status: 'error',
           code: 'ERR_PAYMENT_REQUIRED',
@@ -94,18 +95,22 @@ export default {
         })
       }
 
-      console.log('[func] Payment verified. Processing message...')
+      console.log(`[DEBUG] Payment verified: ${req.payment.satoshisPaid} satoshis paid.`)
 
       const { message } = req.body
 
       // Request Body Validation
-      if (message == null) {
+      if (message === undefined || message === null) {
+        console.error('[ERROR] No message provided in request body!')
         return res.status(400).json({
           status: 'error',
           code: 'ERR_MESSAGE_REQUIRED',
           description: 'Please provide a valid message to send!'
         })
       }
+
+      console.log('[DEBUG] Message Details:', JSON.stringify(message, null, 2))
+
       if (typeof message !== 'object') {
         return res.status(400).json({
           status: 'error',
@@ -113,40 +118,37 @@ export default {
           description: 'Message properties must be contained in a message object!'
         })
       }
-      if (
-        message.recipient === undefined ||
-        message.recipient === null ||
-        typeof message.recipient !== 'string' ||
-        message.recipient.trim() === ''
-      ) {
+
+      if (message.recipient === undefined || message.recipient === null || typeof message.recipient !== 'string' || message.recipient.trim().length === 0) {
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_RECIPIENT',
           description: 'Recipient must be a compressed public key formatted as a hex string!'
         })
       }
-      if (message.messageId === undefined || message.messageId === null || typeof message.messageId !== 'string') {
+
+      console.log(`[DEBUG] Validating recipient key: ${message.recipient}`)
+      try {
+        const recipientPublicKey = PublicKey.fromString(message.recipient)
+        console.log('[DEBUG] Parsed Recipient Public Key Successfully:', recipientPublicKey.toString())
+      } catch (error) {
+        console.error('[ERROR] Failed to parse recipient identity key:', error)
+        return res.status(400).json({
+          status: 'error',
+          code: 'ERR_INVALID_RECIPIENT_KEY',
+          description: 'Recipient identity key format is invalid.'
+        })
+      }
+
+      if (message.messageId === undefined || message.messageId === null || typeof message.messageId !== 'string' || message.messageId.trim() === '') {
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_MESSAGEID',
           description: 'Please provide a unique counterparty-specific messageID!'
         })
       }
-      if (message.body === undefined || message.body === null) {
-        return res.status(400).json({
-          status: 'error',
-          code: 'ERR_MESSAGE_BODY_REQUIRED',
-          description: 'Message body is required!'
-        })
-      } else if (typeof message.messageBox !== 'string') {
-        return res.status(400).json({
-          status: 'error',
-          code: 'ERR_INVALID_MESSAGEBOX',
-          description: 'MessageBox must be a string!'
-        })
-      }
 
-      if (message.body === undefined || message.body === null || typeof message.body !== 'string') {
+      if (message.body === undefined || message.body === null || typeof message.body !== 'string' || message.body.trim() === '') {
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_MESSAGE_BODY',
@@ -154,16 +156,15 @@ export default {
         })
       }
 
+      console.log(`[DEBUG] Storing message for recipient: ${message.recipient}`)
+
       // Select the message box to send this message to
       const messageBox = await knex('messageBox')
-        .where({
-          identityKey: message.recipient,
-          type: message.messageBox
-        })
+        .where({ identityKey: message.recipient, type: message.messageBox })
         .update({ updated_at: new Date() })
 
-      // If this messageBox does not exist yet, create it
-      if (messageBox === undefined || messageBox === 0) {
+      if (messageBox === 0 || isNaN(messageBox)) {
+        console.log('[DEBUG] MessageBox not found, creating a new one...')
         await knex('messageBox').insert({
           identityKey: message.recipient,
           type: message.messageBox,
@@ -173,15 +174,12 @@ export default {
       }
 
       // Select the newly updated/created messageBox Id
-      const [messageBoxRecord] = await knex('messageBox')
-        .where({
-          identityKey: message.recipient,
-          type: message.messageBox
-        })
+      const [messageBoxRecord]: Array<{ messageBoxId: string }> = await knex('messageBox')
+        .where({ identityKey: message.recipient, type: message.messageBox })
         .select('messageBoxId')
 
-      // Ensure messageBox exists before inserting the message
       if (messageBoxRecord === undefined || messageBoxRecord === null) {
+        console.error('[ERROR] The specified messageBox does not exist.')
         return res.status(400).json({
           status: 'error',
           code: 'ERR_MESSAGEBOX_NOT_FOUND',
@@ -189,11 +187,13 @@ export default {
         })
       }
 
+      console.log(`[DEBUG] Inserting message into messageBox ID: ${messageBoxRecord.messageBoxId}`)
+
       // Insert the new message
       try {
         await knex('messages').insert({
           messageId: message.messageId,
-          messageBoxId: messageBoxRecord.messageBoxId, // Foreign key
+          messageBoxId: messageBoxRecord.messageBoxId,
           sender: req.authrite.identityKey,
           recipient: message.recipient,
           body: message.body,
@@ -211,12 +211,14 @@ export default {
         throw error
       }
 
+      console.log('[DEBUG] Message successfully stored.')
+
       return res.status(200).json({
         status: 'success',
         message: `Your message has been sent to ${message.recipient}`
       })
-    } catch (e) {
-      // if (globalThis.Bugsnag != null) globalThis.Bugsnag.notify(e)
+    } catch (error) {
+      console.error('[ERROR] Internal Server Error:', error)
       return res.status(500).json({
         status: 'error',
         code: 'ERR_INTERNAL',
