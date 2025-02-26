@@ -117,21 +117,29 @@ app.use(bodyParser.json({ limit: '1gb', type: 'application/json' }))
 
 export { io, http, HTTP_PORT, ROUTING_PREFIX }
 
-// Initialize Auth Middleware
 const authMiddleware = createAuthMiddleware({
   wallet,
   allowUnauthenticated: false
 })
 
-// Debug logs before and after auth middleware runs
-app.use((req: Request, res: Response, next: NextFunction) => {
+// Debug logs before auth middleware runs
+app.use((req: Request, res: Response, next: NextFunction): void => {
   console.log('[DEBUG] Incoming Auth Request:', req.method, req.url)
-  console.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
 
-  if (req.body !== undefined && req.body !== null) {
+  if (req.headers != null) {
+    console.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
+
+    if (req.headers['x-bsv-auth-identity-key'] === undefined) {
+      console.warn('[WARNING] Missing x-bsv-auth-identity-key in headers')
+    }
+  } else {
+    console.warn('[WARNING] Headers object is null or undefined')
+  }
+
+  if (req.body != null && typeof req.body === 'object') {
     console.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2))
 
-    if (req.body.identityKey !== undefined && req.body.identityKey !== null) {
+    if (typeof req.body.identityKey === 'string' && req.body.identityKey.trim() !== '') {
       console.log(`[DEBUG] Received identityKey: ${String(req.body.identityKey)}`)
 
       try {
@@ -140,16 +148,29 @@ app.use((req: Request, res: Response, next: NextFunction) => {
       } catch (error) {
         console.error('[ERROR] Failed to parse identityKey:', error)
       }
+    } else {
+      console.warn('[WARNING] Invalid or missing identityKey in request body')
     }
+  } else {
+    console.warn('[WARNING] Request body is null, undefined, or not an object')
   }
 
   next()
 })
 
+// Re-enable Auth Middleware
 app.use(authMiddleware)
 
-app.use((req: Request, res: Response, next: NextFunction) => {
+// Debug logs after auth middleware runs
+app.use((req: Request, res: Response, next: NextFunction): void => {
   console.log('[DEBUG] After Authentication Middleware:', req.url)
+
+  if (req.body != null && typeof req.body === 'object') {
+    console.log('[DEBUG] Authenticated User Identity:', req.body.identityKey ?? 'Not Provided')
+  } else {
+    console.warn('[WARNING] Authenticated request body is null, undefined, or not an object')
+  }
+
   next()
 })
 
