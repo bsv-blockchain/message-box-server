@@ -1,16 +1,17 @@
 import * as dotenv from 'dotenv'
 import express, { Express, Request, Response, NextFunction } from 'express'
 import bodyParser from 'body-parser'
-import prettyjson from 'prettyjson'
 import { preAuthrite, postAuthrite } from './routes/index.js'
 import { spawn } from 'child_process'
 import { createServer } from 'http'
-import { AuthSocketServer } from '@bsv/authsocket'
 import { createAuthMiddleware } from '@bsv/auth-express-middleware'
 import { ProtoWallet, PrivateKey, PublicKey } from '@bsv/sdk'
 import { webcrypto } from 'crypto'
 import knexLib from 'knex'
 import knexConfig from '../knexfile.js'
+
+// Optional WebSocket import
+import { AuthSocketServer } from '@bsv/authsocket'
 
 (global as any).self = { crypto: webcrypto }
 
@@ -22,6 +23,7 @@ const {
   NODE_ENV = 'development',
   PORT,
   SERVER_PRIVATE_KEY,
+  ENABLE_WEBSOCKETS = 'true',
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   HOSTING_DOMAIN,
   ROUTING_PREFIX = ''
@@ -67,13 +69,48 @@ console.log('[DEBUG] Derived Public Key:', publicKey.toString())
 /* eslint-disable @typescript-eslint/no-misused-promises */
 const http = createServer(app)
 
-const io = new AuthSocketServer(http, {
-  wallet, // Required for signing
-  cors: {
-    origin: '*', // Allows all origins for WebSockets
-    methods: ['GET', 'POST']
-  }
-})
+// WebSocket setup (only if enabled)
+let io: AuthSocketServer | null = null
+if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
+  console.log('[WEBSOCKET] Initializing WebSocket support...')
+  io = new AuthSocketServer(http, {
+    wallet,
+    cors: {
+      origin: '*',
+      methods: ['GET', 'POST']
+    }
+  })
+
+  io.on('connection', (socket) => {
+    console.log('[WEBSOCKET] Raw identityKey received:', socket.identityKey)
+
+    try {
+      if (typeof socket.identityKey === 'string' && socket.identityKey.trim() !== '') {
+        const parsedIdentityKey = PublicKey.fromString(socket.identityKey)
+        console.log('[DEBUG] Parsed WebSocket Identity Key Successfully:', parsedIdentityKey.toString())
+      } else {
+        console.warn('[WARN] WebSocket connection received without identity key.')
+      }
+    } catch (error) {
+      console.error('[ERROR] Failed to parse WebSocket identity key:', error)
+    }
+
+    const identityKey = socket.identityKey ?? 'unknown'
+    console.log(`New authenticated WebSocket connection from: ${identityKey}`)
+
+    socket.on('disconnect', (reason: string) => {
+      console.log(`Disconnected: ${reason}`)
+    })
+
+    socket.on('reconnect', (attemptNumber: number) => {
+      console.log(`Reconnected after ${attemptNumber} attempts`)
+    })
+
+    socket.on('reconnect_error', (error: Error) => {
+      console.log('Reconnection failed:', error)
+    })
+  })
+}
 
 // Configure JSON body parser
 app.use(bodyParser.json({ limit: '1gb', type: 'application/json' }))
@@ -113,92 +150,6 @@ app.use(authMiddleware)
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   console.log('[DEBUG] After Authentication Middleware:', req.url)
-  next()
-})
-
-// Force HTTPS unless in development mode
-app.use((req: Request, res: Response, next: NextFunction) => {
-  const forwardedProto: string = req.get('x-forwarded-proto') ?? ''
-  const isSecure: boolean = (req as any).secure === true
-  const host: string = req.get('host') ?? ''
-
-  if (!isSecure && forwardedProto !== 'https' && NODE_ENV !== 'development') {
-    return res.redirect(`https://${host}${String(req.url)}`)
-  }
-  next()
-})
-
-// CORS Configuration
-app.use((req: Request, res: Response, next: NextFunction) => {
-  res.header('Access-Control-Allow-Origin', '*')
-  res.header('Access-Control-Allow-Headers', '*')
-  res.header('Access-Control-Allow-Methods', '*')
-  res.header('Access-Control-Expose-Headers', '*')
-  res.header('Access-Control-Allow-Private-Network', 'true')
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200)
-  } else {
-    next()
-  }
-})
-
-// Log all unauthorized authentication attempts
-app.use((req, res, next) => {
-  res.on('finish', () => {
-    if (res.statusCode === 401) {
-      console.error('[AUTH ERROR] 401 Unauthorized:', req.url)
-      console.error('[AUTH ERROR] Headers:', JSON.stringify(req.headers, null, 2))
-      console.error('[AUTH ERROR] Body:', JSON.stringify(req.body, null, 2))
-    }
-  })
-  next()
-})
-
-// Configure WebSocket Events
-io.on('connection', (socket) => {
-  console.log('[WEBSOCKET] Raw identityKey received:', socket.identityKey)
-
-  try {
-    if (typeof socket.identityKey === 'string' && socket.identityKey.trim() !== '') {
-      const parsedIdentityKey = PublicKey.fromString(socket.identityKey)
-      console.log('[DEBUG] Parsed WebSocket Identity Key Successfully:', parsedIdentityKey.toString())
-    } else {
-      console.warn('[WARN] WebSocket connection received without identity key.')
-    }
-  } catch (error) {
-    console.error('[ERROR] Failed to parse WebSocket identity key:', error)
-  }
-
-  const identityKey = socket.identityKey ?? 'unknown'
-  console.log(`New authenticated WebSocket connection from: ${identityKey}`)
-
-  socket.on('disconnect', (reason: string) => {
-    console.log(`Disconnected: ${reason}`)
-  })
-
-  socket.on('reconnect', (attemptNumber: number) => {
-    console.log(`Reconnected after ${attemptNumber} attempts`)
-  })
-
-  socket.on('reconnect_error', (error: Error) => {
-    console.log('Reconnection failed:', error)
-  })
-})
-
-// Logger Middleware
-app.use((req: Request, res: Response, next: NextFunction) => {
-  console.log(`[${req.method}] <- ${req.url}`)
-  console.log(prettyjson.render(req.body, { keysColor: 'blue' }))
-
-  const originalJson = res.json.bind(res)
-
-  res.json = (json: any): Response => {
-    originalJson(json)
-    console.log(`[${req.method}] -> ${req.url}`)
-    console.log(prettyjson.render(json, { keysColor: 'green' }))
-    return res
-  }
-
   next()
 })
 
