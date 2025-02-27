@@ -1,7 +1,7 @@
 import * as dotenv from 'dotenv'
 import express, { Express, Request, Response, NextFunction } from 'express'
 import bodyParser from 'body-parser'
-import { preAuthrite, postAuthrite } from './routes/index.js'
+import { preAuth, postAuth } from './routes/index.js'
 import { spawn } from 'child_process'
 import { createServer } from 'http'
 import { createAuthMiddleware } from '@bsv/auth-express-middleware'
@@ -46,10 +46,10 @@ const parsedEnvPort = Number(process.env.HTTP_PORT)
 const HTTP_PORT: number = NODE_ENV !== 'development'
   ? 3000
   : !isNaN(parsedPort) && parsedPort > 0
-    ? parsedPort
-    : !isNaN(parsedEnvPort) && parsedEnvPort > 0
-      ? parsedEnvPort
-      : 8080
+      ? parsedPort
+      : !isNaN(parsedEnvPort) && parsedEnvPort > 0
+          ? parsedEnvPort
+          : 8080
 
 // Initialize Wallet for Authentication
 if (SERVER_PRIVATE_KEY === undefined || SERVER_PRIVATE_KEY === null || SERVER_PRIVATE_KEY.trim() === '') {
@@ -191,7 +191,7 @@ app.use((req: Request, res: Response, next: NextFunction): void => {
 app.use(express.static('public'))
 
 // Pre-Auth Routes
-preAuthrite.forEach((route) => {
+preAuth.forEach((route) => {
   app[route.type as 'get' | 'post' | 'put' | 'delete'](
     `${String(ROUTING_PREFIX)}${String(route.path)}`,
     route.func as unknown as (req: Request, res: Response, next: NextFunction) => void
@@ -202,7 +202,7 @@ preAuthrite.forEach((route) => {
 app.use(authMiddleware)
 
 // Post-Auth Routes
-postAuthrite.forEach((route) => {
+postAuth.forEach((route) => {
   app[route.type as 'get' | 'post' | 'put' | 'delete'](
     `${String(ROUTING_PREFIX)}${String(route.path)}`,
     (req, res, next) => {
