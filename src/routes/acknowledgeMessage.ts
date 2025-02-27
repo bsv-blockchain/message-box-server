@@ -15,7 +15,7 @@ const knex: knexLib.Knex = (knexLib as any).default?.(
 )
 
 export interface AcknowledgeRequest extends Request {
-  authrite: { identityKey: string }
+  auth: { identityKey: string }
   body: { messageIds?: string[] }
 }
 
@@ -54,7 +54,7 @@ export default {
 
       // The server removes the message after it has been acknowledged
       const deleted = await knex('messages')
-        .where({ recipient: req.authrite.identityKey })
+        .where({ recipient: req.auth.identityKey })
         .whereIn('messageId', Array.isArray(messageIds) ? messageIds : [messageIds])
         .del()
 

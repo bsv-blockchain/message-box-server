@@ -15,7 +15,7 @@ const knex: knexLib.Knex = (knexLib as any).default?.(
 )
 
 interface ListMessagesRequest extends Request {
-  authrite: { identityKey: string }
+  auth: { identityKey: string }
   body: { messageBox?: string }
 }
 
@@ -61,7 +61,7 @@ export default {
       // Get the ID of the messageBox
       const [messageBoxRecord] = await knex('messageBox')
         .where({
-          identityKey: req.authrite.identityKey,
+          identityKey: req.auth.identityKey,
           type: messageBox
         })
         .select('messageBoxId')
@@ -77,7 +77,7 @@ export default {
       // Get all messages from the specified messageBox
       const messages = await knex('messages')
         .where({
-          recipient: req.authrite.identityKey,
+          recipient: req.auth.identityKey,
           messageBoxId: messageBoxRecord.messageBoxId
         })
         .select('messageId', 'body', 'sender', 'created_at', 'updated_at')

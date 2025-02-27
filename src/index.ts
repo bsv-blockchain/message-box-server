@@ -46,15 +46,31 @@ const parsedEnvPort = Number(process.env.HTTP_PORT)
 const HTTP_PORT: number = NODE_ENV !== 'development'
   ? 3000
   : !isNaN(parsedPort) && parsedPort > 0
-      ? parsedPort
-      : !isNaN(parsedEnvPort) && parsedEnvPort > 0
-          ? parsedEnvPort
-          : 8080
+    ? parsedPort
+    : !isNaN(parsedEnvPort) && parsedEnvPort > 0
+      ? parsedEnvPort
+      : 8080
 
 // Initialize Wallet for Authentication
 if (SERVER_PRIVATE_KEY === undefined || SERVER_PRIVATE_KEY === null || SERVER_PRIVATE_KEY.trim() === '') {
   throw new Error('SERVER_PRIVATE_KEY is not defined in the environment variables.')
 }
+
+// This allows the API to be used everywhere when CORS is enforced
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*')
+  res.header('Access-Control-Allow-Headers', '*')
+  res.header('Access-Control-Allow-Methods', '*')
+  res.header('Access-Control-Expose-Headers', '*')
+  res.header('Access-Control-Allow-Private-Network', 'true')
+
+  if (req.method === 'OPTIONS') {
+    // Handle CORS preflight requests to allow cross-origin POST/PUT requests
+    res.sendStatus(200)
+  } else {
+    next()
+  }
+})
 
 const privateKey = PrivateKey.fromRandom()
 console.log('[DEBUG] Generated Private Key:', privateKey.toHex())
@@ -157,9 +173,6 @@ app.use((req: Request, res: Response, next: NextFunction): void => {
 
   next()
 })
-
-// Re-enable Auth Middleware
-app.use(authMiddleware)
 
 // Debug logs after auth middleware runs
 app.use((req: Request, res: Response, next: NextFunction): void => {

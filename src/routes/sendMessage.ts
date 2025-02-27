@@ -33,7 +33,7 @@ interface SendMessageRequestBody {
 }
 
 interface SendMessageRequest extends Request {
-  authrite: { identityKey: string }
+  auth: { identityKey: string }
   body: SendMessageRequestBody
 }
 
@@ -46,7 +46,7 @@ const privateKey = PrivateKey.fromRandom()
 console.log('[DEBUG] Generated Private Key:', privateKey.toHex())
 const wallet = new ProtoWallet(privateKey)
 
-export function calculateMessagePrice (message: string, priority: boolean = false): number {
+export function calculateMessagePrice(message: string, priority: boolean = false): number {
   const basePrice = 500 // Base fee in satoshis
   const sizeFactor = Math.ceil(Buffer.byteLength(message, 'utf8') / 1024) * 50 // 50 satoshis per KB
   const priorityFee = priority ? 200 : 0 // Additional fee for priority messages
@@ -55,24 +55,24 @@ export function calculateMessagePrice (message: string, priority: boolean = fals
 }
 
 // Create Payment Middleware
-const paymentMiddleware = createPaymentMiddleware({
-  wallet,
-  calculateRequestPrice: async (req) => {
-    const body = req.body as SendMessageRequestBody
-    if (
-      body === undefined ||
-      body === null ||
-      body.message === undefined ||
-      body.message === null ||
-      body.message.body === undefined ||
-      body.message.body === null ||
-      body.message.body.trim() === ''
-    ) {
-      return 0 // Free if there's no valid message body
-    }
-    return calculateMessagePrice(body.message.body, body.priority ?? false)
-  }
-})
+// const paymentMiddleware = createPaymentMiddleware({
+//   wallet,
+//   calculateRequestPrice: async (req) => {
+//     const body = req.body as SendMessageRequestBody
+//     if (
+//       body === undefined ||
+//       body === null ||
+//       body.message === undefined ||
+//       body.message === null ||
+//       body.message.body === undefined ||
+//       body.message.body === null ||
+//       body.message.body.trim() === ''
+//     ) {
+//       return 0 // Free if there's no valid message body
+//     }
+//     return calculateMessagePrice(body.message.body, body.priority ?? false)
+//   }
+// })
 
 export default {
   type: 'post',
@@ -88,7 +88,7 @@ export default {
     }
   },
   exampleResponse: { status: 'success' },
-  middleware: [paymentMiddleware], // Attach paymentMiddleware here
+  // middleware: [paymentMiddleware], // Attach paymentMiddleware here
 
   func: async (req: SendMessageRequest, res: Response): Promise<Response> => {
     console.log('[DEBUG] Processing /sendMessage request...')
@@ -97,20 +97,20 @@ export default {
 
     try {
       // **Explicitly check the Payment field**
-      const { payment } = req.body
+      // const { payment } = req.body
 
-      console.log('[DEBUG] Checking payment field:', JSON.stringify(payment, null, 2))
+      // console.log('[DEBUG] Checking payment field:', JSON.stringify(payment, null, 2))
 
-      if (payment === undefined || payment === null || payment.satoshisPaid === undefined) {
-        console.error('[ERROR] Payment is required but missing! Received:', JSON.stringify(payment, null, 2))
-        return res.status(402).json({
-          status: 'error',
-          code: 'ERR_PAYMENT_REQUIRED',
-          description: 'Payment is required before sending messages. Ensure the correct payment field is provided.'
-        })
-      }
+      // if (payment === undefined || payment === null || payment.satoshisPaid === undefined) {
+      //   console.error('[ERROR] Payment is required but missing! Received:', JSON.stringify(payment, null, 2))
+      //   return res.status(402).json({
+      //     status: 'error',
+      //     code: 'ERR_PAYMENT_REQUIRED',
+      //     description: 'Payment is required before sending messages. Ensure the correct payment field is provided.'
+      //   })
+      // }
 
-      console.log(`[DEBUG] Payment verified: ${payment.satoshisPaid} satoshis paid.`)
+      // console.log(`[DEBUG] Payment verified: ${payment.satoshisPaid} satoshis paid.`)
 
       const { message } = req.body
       if (message === undefined || message === null) {
@@ -165,6 +165,29 @@ export default {
           updated_at: new Date()
         })
       }
+
+      // Insert the new message
+      // try {
+      await knex('messages').insert({
+        messageId: message.messageId,
+        messageBoxId: messageBox, // Foreign key?
+        sender: req.auth.identityKey,
+        recipient: message.recipient,
+        body: message.body, // support binary in the future
+        created_at: new Date(),
+        updated_at: new Date()
+      })
+      // TODO
+      // } catch (error) {
+      // if (error.code === 'ER_DUP_ENTRY') {
+      //   return res.status(400).json({
+      //     status: 'error',
+      //     code: 'ERR_DUPLICATE_MESSAGE',
+      //     description: 'Your message has already been sent to the intended recipient!'
+      //   })
+      // }
+      // throw error
+      // }
 
       console.log('[DEBUG] Message successfully stored.')
 
