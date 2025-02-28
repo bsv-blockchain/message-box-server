@@ -44,7 +44,7 @@ if (SERVER_PRIVATE_KEY == null || SERVER_PRIVATE_KEY.trim() === '') {
 
 const privateKey = PrivateKey.fromRandom()
 console.log('[DEBUG] Generated Private Key:', privateKey.toHex())
-const wallet = new ProtoWallet(privateKey)
+// const wallet = new ProtoWallet(privateKey)
 
 export function calculateMessagePrice (message: string, priority: boolean = false): number {
   const basePrice = 500 // Base fee in satoshis

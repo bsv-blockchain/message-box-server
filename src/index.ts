@@ -5,12 +5,13 @@ import { preAuth, postAuth } from './routes/index.js'
 import { spawn } from 'child_process'
 import { createServer } from 'http'
 import { createAuthMiddleware } from '@bsv/auth-express-middleware'
-import { ProtoWallet, PrivateKey, PublicKey } from '@bsv/sdk'
+import { PrivateKey, PublicKey } from '@bsv/sdk'
 import { webcrypto } from 'crypto'
 import knexLib from 'knex'
 import knexConfig from '../knexfile.js'
 import { createPaymentMiddleware } from '@bsv/payment-express-middleware'
 import sendMessageRoute, { calculateMessagePrice } from './routes/sendMessage.js'
+import { Setup } from '@bsv/wallet-toolbox'
 
 // Optional WebSocket import
 import { AuthSocketServer } from '@bsv/authsocket'
@@ -28,7 +29,8 @@ const {
   ENABLE_WEBSOCKETS = 'true',
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   HOSTING_DOMAIN,
-  ROUTING_PREFIX = ''
+  ROUTING_PREFIX = '',
+  STORAGE_URL
 } = process.env
 
 const knex: knexLib.Knex = (knexLib as any).default?.(
@@ -77,7 +79,11 @@ app.use((req, res, next) => {
 const privateKey = PrivateKey.fromRandom()
 console.log('[DEBUG] Generated Private Key:', privateKey.toHex())
 
-const wallet = new ProtoWallet(privateKey)
+const wallet = await Setup.createWalletClientNoEnv({
+  chain: 'main',
+  rootKeyHex: SERVER_PRIVATE_KEY,
+  storageUrl: STORAGE_URL // https://storage.babbage.systems
+})
 
 // Check the derived public key
 const publicKey = privateKey.toPublicKey()
