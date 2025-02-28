@@ -9,6 +9,8 @@ import { ProtoWallet, PrivateKey, PublicKey } from '@bsv/sdk'
 import { webcrypto } from 'crypto'
 import knexLib from 'knex'
 import knexConfig from '../knexfile.js'
+import { createPaymentMiddleware } from '@bsv/payment-express-middleware'
+import sendMessageRoute, { calculateMessagePrice } from './routes/sendMessage.js'
 
 // Optional WebSocket import
 import { AuthSocketServer } from '@bsv/authsocket'
@@ -201,17 +203,47 @@ preAuth.forEach((route) => {
 // Apply New Authentication Middleware
 app.use(authMiddleware)
 
-// Post-Auth Routes
+const paymentMiddleware = createPaymentMiddleware({
+  wallet,
+  calculateRequestPrice: async (req) => {
+    console.log('[DEBUG] Payment Middleware Triggered')
+
+    const body = req.body as { message?: { body: string }, priority?: boolean }
+
+    if (body.message?.body == null) {
+      console.warn('[WARNING] No message body provided, skipping payment calculation.')
+      return 0
+    }
+
+    const price = calculateMessagePrice(body.message.body, body.priority ?? false)
+    console.log(`[DEBUG] Calculated payment requirement: ${price} satoshis`)
+    return price
+  }
+})
+
 postAuth.forEach((route) => {
-  app[route.type as 'get' | 'post' | 'put' | 'delete'](
-    `${String(ROUTING_PREFIX)}${String(route.path)}`,
-    (req, res, next) => {
-      console.log('[DEBUG] Authenticated Request to:', req.url)
-      console.log('[DEBUG] User Identity:', req.body.identityKey ?? 'Not Provided')
-      next()
-    },
-    route.func as unknown as (req: Request, res: Response, next: NextFunction) => void
-  )
+  if (route.path === '/sendMessage') {
+    app[route.type as 'get' | 'post' | 'put' | 'delete'](
+      `${String(ROUTING_PREFIX)}${String(route.path)}`,
+      (req, res, next) => {
+        console.log('[DEBUG] Authenticated Request to:', req.url)
+        console.log('[DEBUG] User Identity:', req.body.identityKey ?? 'Not Provided')
+        next()
+      },
+      paymentMiddleware, // Apply payment middleware specifically for /sendMessage
+      sendMessageRoute.func as unknown as (req: Request, res: Response, next: NextFunction) => void
+    )
+  } else {
+    app[route.type as 'get' | 'post' | 'put' | 'delete'](
+      `${String(ROUTING_PREFIX)}${String(route.path)}`,
+      (req, res, next) => {
+        console.log('[DEBUG] Authenticated Request to:', req.url)
+        console.log('[DEBUG] User Identity:', req.body.identityKey ?? 'Not Provided')
+        next()
+      },
+      route.func as unknown as (req: Request, res: Response, next: NextFunction) => void
+    )
+  }
 })
 
 // 404 Route Not Found Handler

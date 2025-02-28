@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node out/src/index.js",
-    "dev": "nodemon --watch .env --watch src --exec tsx src/index.ts",
+    "dev": "nodemon --inspect --watch .env --watch src --exec tsx src/index.ts",
     "build": "tsc",
     "test": "jest --config=jest.config.ts",
     "test:integration": "jest --config=jest.config.integration.ts",
