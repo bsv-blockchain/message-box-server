@@ -1,8 +1,7 @@
 import { Request, Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
-import { createPaymentMiddleware } from '@bsv/payment-express-middleware'
-import { ProtoWallet, PrivateKey, PublicKey } from '@bsv/sdk'
+import { PrivateKey, PublicKey } from '@bsv/sdk'
 import { webcrypto } from 'crypto'
 
 (global as any).self = { crypto: webcrypto }
