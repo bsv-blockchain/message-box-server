@@ -117,6 +117,9 @@ if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
 
         authenticatedSockets.set(socket.id, parsedIdentityKey.toString())
         console.log('[WEBSOCKET] Identity key stored for socket ID:', socket.id)
+
+        // Send confirmation immediately if identity key is provided on connection
+        void socket.emit('authenticationSuccess', { status: 'success' })
       } catch (error) {
         console.error('[ERROR] Failed to parse WebSocket identity key:', error)
       }
@@ -125,7 +128,7 @@ if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
 
       let identityKeyHandled = false
 
-      const authListener = (data: { identityKey?: string }): void => {
+      const authListener = async (data: { identityKey?: string }): Promise<void> => {
         if (identityKeyHandled) return
 
         console.log('[WEBSOCKET] Received authentication data:', data)
@@ -135,20 +138,28 @@ if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
             const parsedIdentityKey = PublicKey.fromString(data.identityKey)
             console.log('[DEBUG] Retrieved and parsed Identity Key after connection:', parsedIdentityKey.toString())
 
-            authenticatedSockets.set(socket.id, parsedIdentityKey.toString()) // 🔹 Ensuring it is stored
+            authenticatedSockets.set(socket.id, parsedIdentityKey.toString())
             console.log('[WEBSOCKET] Stored authenticated Identity Key for socket ID:', socket.id)
 
             identityKeyHandled = true
 
             console.log(`New authenticated WebSocket connection from: ${authenticatedSockets.get(socket.id) ?? 'unknown'}`)
+
+            // Emit authentication success message
+            await socket.emit('authenticationSuccess', { status: 'success' }).catch(error => {
+              console.error('[WEBSOCKET ERROR] Failed to send authentication success event:', error)
+            })
           } catch (error) {
             console.error('[ERROR] Failed to parse Identity Key from authenticated event:', error)
+            await socket.emit('authenticationFailed', { reason: 'Invalid identity key format' })
           }
         } else {
           console.warn('[WARN] Invalid or missing identity key in authentication event.')
+          await socket.emit('authenticationFailed', { reason: 'Missing identity key' })
         }
       }
 
+      // Ensure `authListener` is used properly
       socket.on('authenticated', authListener)
     }
 
