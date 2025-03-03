@@ -1,5 +1,5 @@
 import * as dotenv from 'dotenv'
-import express, { Express, Request as ExpressRequest, Response, NextFunction } from 'express'
+import express, { Express, Request as ExpressRequest, Response, NextFunction, RequestHandler } from 'express'
 import bodyParser from 'body-parser'
 import { preAuth, postAuth } from './routes/index.js'
 import { spawn } from 'child_process'
@@ -10,6 +10,8 @@ import { webcrypto } from 'crypto'
 import knexLib from 'knex'
 import knexConfig from '../knexfile.js'
 import { Setup } from '@bsv/wallet-toolbox'
+import { createPaymentMiddleware } from '@bsv/payment-express-middleware'
+import sendMessageRoute, { calculateMessagePrice } from './routes/sendMessage.js'
 
 // Optional WebSocket import
 import { AuthSocketServer } from '@bsv/authsocket'
@@ -52,7 +54,7 @@ const HTTP_PORT: number = NODE_ENV !== 'development'
           : 8080
 
 // Initialize Wallet for Authentication
-if (SERVER_PRIVATE_KEY == null || SERVER_PRIVATE_KEY.trim() === '') {
+if (SERVER_PRIVATE_KEY === undefined || SERVER_PRIVATE_KEY === null || SERVER_PRIVATE_KEY.trim() === '') {
   throw new Error('SERVER_PRIVATE_KEY is not defined in the environment variables.')
 }
 
@@ -65,6 +67,7 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Private-Network', 'true')
 
   if (req.method === 'OPTIONS') {
+    // Handle CORS preflight requests to allow cross-origin POST/PUT requests
     res.sendStatus(200)
   } else {
     next()
@@ -84,12 +87,10 @@ const wallet = await Setup.createWalletClientNoEnv({
 const publicKey = privateKey.toPublicKey()
 console.log('[DEBUG] Derived Public Key:', publicKey.toString())
 
+// Create HTTP server
 /* eslint-disable @typescript-eslint/no-misused-promises */
 const http = createServer(app)
 
-// WebSocket setup (only if enabled)
-// WebSocket setup (only if enabled)
-// WebSocket setup (only if enabled)
 // WebSocket setup (only if enabled)
 let io: AuthSocketServer | null = null
 
@@ -150,6 +151,80 @@ if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
 
       socket.on('authenticated', authListener)
     }
+
+    // Re-adding Send Message Handling
+    socket.on('sendMessage', async ({ roomId, message }) => {
+      if (!authenticatedSockets.has(socket.id)) {
+        console.warn('[WEBSOCKET] Unauthorized attempt to send a message.')
+        await socket.emit('paymentFailed', { reason: 'Unauthorized: WebSocket not authenticated' })
+        return
+      }
+
+      console.log(`[WEBSOCKET] Processing sendMessage for room: ${String(roomId)}`)
+
+      try {
+        if (roomId == null || typeof roomId !== 'string' || roomId.trim() === '') {
+          console.error('[WEBSOCKET ERROR] Invalid roomId:', roomId)
+          await socket.emit('messageFailed', { reason: 'Invalid room ID' })
+          return
+        }
+
+        if (message == null || typeof message.body !== 'string' || message.body.trim() === '') {
+          console.error('[WEBSOCKET ERROR] Invalid message body:', message?.body)
+          await socket.emit('messageFailed', { reason: 'Invalid message body' })
+          return
+        }
+
+        console.log(`[WEBSOCKET] Broadcasting message to room ${roomId}`)
+        if (io !== null) {
+          io.emit(`sendMessage-${roomId}`, {
+            sender: authenticatedSockets.get(socket.id) ?? 'unknown',
+            ...message
+          })
+        } else {
+          console.error('[WEBSOCKET ERROR] WebSocket server is not initialized.')
+        }
+      } catch (error) {
+        console.error('[WEBSOCKET ERROR] Failed to send message:', error)
+        await socket.emit('messageFailed', { reason: 'Message processing error' })
+      }
+    })
+
+    // Re-adding Join Room Handling
+    socket.on('joinRoom', async (roomId: string) => {
+      if (!authenticatedSockets.has(socket.id)) {
+        console.warn('[WEBSOCKET] Unauthorized attempt to join a room.')
+        await socket.emit('joinFailed', { reason: 'Unauthorized: WebSocket not authenticated' })
+        return
+      }
+
+      if (roomId == null || typeof roomId !== 'string' || roomId.trim() === '') {
+        console.error('[WEBSOCKET ERROR] Invalid roomId:', roomId)
+        await socket.emit('joinFailed', { reason: 'Invalid room ID' })
+        return
+      }
+
+      console.log(`[WEBSOCKET] User ${socket.id} joined room ${roomId}`)
+      await socket.emit('joinedRoom', { roomId })
+    })
+
+    // Re-adding Leave Room Handling
+    socket.on('leaveRoom', async (roomId: string) => {
+      if (!authenticatedSockets.has(socket.id)) {
+        console.warn('[WEBSOCKET] Unauthorized attempt to leave a room.')
+        await socket.emit('leaveFailed', { reason: 'Unauthorized: WebSocket not authenticated' })
+        return
+      }
+
+      if (roomId == null || roomId === '' || typeof roomId !== 'string' || roomId.trim() === '') {
+        console.error('[WEBSOCKET ERROR] Invalid roomId:', roomId)
+        await socket.emit('leaveFailed', { reason: 'Invalid room ID' })
+        return
+      }
+
+      console.log(`[WEBSOCKET] User ${socket.id} left room ${roomId}`)
+      await socket.emit('leftRoom', { roomId })
+    })
 
     socket.on('disconnect', (reason: string) => {
       console.log(`[WEBSOCKET] Disconnected: ${reason}`)
@@ -224,20 +299,46 @@ preAuth.forEach((route) => {
   )
 })
 
-// Apply New Authentication Middleware
-app.use(authMiddleware)
+const paymentMiddleware = createPaymentMiddleware({
+  wallet,
+  calculateRequestPrice: async (req) => {
+    console.log('[DEBUG] Payment Middleware Triggered')
+
+    const body = req.body as { message?: { body: string }, priority?: boolean }
+
+    if (body.message?.body == null) {
+      console.warn('[WARNING] No message body provided, skipping payment calculation.')
+      return 0
+    }
+
+    const price = calculateMessagePrice(body.message.body, body.priority ?? false)
+    console.log(`[DEBUG] Calculated payment requirement: ${price} satoshis`)
+    return price
+  }
+})
 
 // Post-Auth Routes
 postAuth.forEach((route) => {
-  app[route.type as 'get' | 'post' | 'put' | 'delete'](
-    `${String(ROUTING_PREFIX)}${String(route.path)}`,
-    (req, res, next) => {
-      console.log('[DEBUG] Authenticated Request to:', req.url)
-      console.log('[DEBUG] User Identity:', (req as unknown as AuthenticatedRequest).auth?.identityKey ?? 'Not Provided')
-      next()
-    },
-    route.func as unknown as (req: ExpressRequest, res: Response, next: NextFunction) => void
-  )
+  const loggingMiddleware: RequestHandler = (req, res, next) => {
+    console.log('[DEBUG] Authenticated Request to:', req.url)
+    console.log('[DEBUG] User Identity:', req.body.identityKey ?? 'Not Provided')
+    next()
+  }
+
+  if (route.path === '/sendMessage') {
+    app[route.type as 'get' | 'post' | 'put' | 'delete'](
+      `${String(ROUTING_PREFIX)}${String(route.path)}`,
+      loggingMiddleware,
+      paymentMiddleware, // Apply payment middleware specifically for /sendMessage
+      sendMessageRoute.func as unknown as RequestHandler
+    )
+  } else {
+    app[route.type as 'get' | 'post' | 'put' | 'delete'](
+      `${String(ROUTING_PREFIX)}${String(route.path)}`,
+      loggingMiddleware,
+      route.func as RequestHandler
+    )
+  }
 })
 
 // 404 Route Not Found Handler
