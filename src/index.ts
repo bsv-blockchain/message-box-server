@@ -166,18 +166,18 @@ if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
     // Re-adding Send Message Handling
     socket.on(
       'sendMessage',
-      async (
-        data: { roomId: string, message: { messageId: string, body: string } },
-        callback?: (error: Error | null, response?: { status: 'success', messageId: string }) => void
-      ): Promise<void> => {
+      async (data: { roomId: string, message: { messageId: string, body: string } }): Promise<void> => {
+        if (typeof data !== 'object' || data == null) {
+          console.error('[WEBSOCKET ERROR] Invalid data object received.')
+          await socket.emit('messageFailed', { reason: 'Invalid data object' })
+          return
+        }
+
         const { roomId, message } = data
 
         if (!authenticatedSockets.has(socket.id)) {
           console.warn('[WEBSOCKET] Unauthorized attempt to send a message.')
           await socket.emit('paymentFailed', { reason: 'Unauthorized: WebSocket not authenticated' })
-          if (typeof callback === 'function') {
-            callback(new Error('Unauthorized: WebSocket not authenticated'))
-          }
           return
         }
 
@@ -187,18 +187,18 @@ if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
           if (typeof roomId !== 'string' || roomId.trim() === '') {
             console.error('[WEBSOCKET ERROR] Invalid roomId:', roomId)
             await socket.emit('messageFailed', { reason: 'Invalid room ID' })
-            if (typeof callback === 'function') {
-              callback(new Error('Invalid room ID'))
-            }
             return
           }
 
-          if (typeof message !== 'object' || message == null || typeof message.body !== 'string' || message.body.trim() === '') {
-            console.error('[WEBSOCKET ERROR] Invalid message body:', message?.body)
+          if (typeof message !== 'object' || message == null) {
+            console.error('[WEBSOCKET ERROR] Invalid message object:', message)
+            await socket.emit('messageFailed', { reason: 'Invalid message object' })
+            return
+          }
+
+          if (typeof message.body !== 'string' || message.body.trim() === '') {
+            console.error('[WEBSOCKET ERROR] Invalid message body:', message.body)
             await socket.emit('messageFailed', { reason: 'Invalid message body' })
-            if (typeof callback === 'function') {
-              callback(new Error('Invalid message body'))
-            }
             return
           }
 
@@ -209,21 +209,22 @@ if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
               ...message
             })
 
-            if (callback != null && typeof callback === 'function') {
-              callback(null, { status: 'success', messageId: message.messageId })
-              console.log(`[WEBSOCKET] Acknowledged message ${message.messageId} back to sender.`)
-            } else {
-              console.warn('[WEBSOCKET] No callback function provided in sendMessage event.')
-            }
+            console.log(`[WEBSOCKET] Acknowledging message ${message.messageId} to sender.`)
+
+            await socket.emit(`sendMessageAck-${roomId}`, {
+              status: 'success',
+              messageId: message.messageId
+            })
           } else {
             console.error('[WEBSOCKET ERROR] WebSocket server is not initialized.')
-            if (callback != null) callback(new Error('WebSocket server not initialized'))
+            await socket.emit('messageFailed', { reason: 'WebSocket server not initialized' })
           }
         } catch (error) {
           console.error('[WEBSOCKET ERROR] Failed to send message:', error)
-          if (callback != null) callback(new Error('Message processing error'))
+          await socket.emit('messageFailed', { reason: 'Message processing error' })
         }
-      })
+      }
+    )
 
     // Re-adding Join Room Handling
     socket.on('joinRoom', async (roomId: string) => {
