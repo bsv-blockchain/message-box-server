@@ -21,11 +21,8 @@ perl -E'
   say "        - name: $_
           value: \x27$ENV{$_}\x27" for @ARGV;
 ' NODE_ENV \
-    MIGRATE_KEY \
-    ROUTING_PREFIX \
     KNEX_DB_CONNECTION \
-    KNEX_DB_CLIENT \
-    HOSTING_DOMAIN \
+    WALLET_STORAGE_URL \
     SERVER_PRIVATE_KEY >> $1
 
 echo "Built! Contents of $1:"
