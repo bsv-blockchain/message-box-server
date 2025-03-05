@@ -74,18 +74,11 @@ app.use((req, res, next) => {
   }
 })
 
-const privateKey = PrivateKey.fromRandom()
-console.log('[DEBUG] Generated Private Key:', privateKey.toHex())
-
 const wallet = await Setup.createWalletClientNoEnv({
   chain: 'main',
   rootKeyHex: SERVER_PRIVATE_KEY,
   storageUrl: WALLET_STORAGE_URL // https://storage.babbage.systems
 })
-
-// Check the derived public key
-const publicKey = privateKey.toPublicKey()
-console.log('[DEBUG] Derived Public Key:', publicKey.toString())
 
 // Create HTTP server
 /* eslint-disable @typescript-eslint/no-misused-promises */
@@ -301,11 +294,15 @@ const authMiddleware = createAuthMiddleware({
   logLevel: 'debug'
 })
 
-// Track auth middleware executions
-app.use((req: express.Request, res: express.Response, next: express.NextFunction): void => {
-  authMiddlewareCounter++
-  console.log(`[DEBUG] AuthMiddleware Executed (${authMiddlewareCounter} times) for: ${req.url}`)
-  next()
+// Serve Static Files
+app.use(express.static('public'))
+
+// Pre-Auth Routes
+preAuth.forEach((route) => {
+  app[route.type as 'get' | 'post' | 'put' | 'delete'](
+    `${String(ROUTING_PREFIX)}${String(route.path)}`,
+    route.func as unknown as (req: ExpressRequest, res: Response, next: NextFunction) => void
+  )
 })
 
 // Apply authentication middleware
@@ -324,17 +321,6 @@ app.use((req: ExpressRequest, res: Response, next: NextFunction): void => {
   }
 
   next()
-})
-
-// Serve Static Files
-app.use(express.static('public'))
-
-// Pre-Auth Routes
-preAuth.forEach((route) => {
-  app[route.type as 'get' | 'post' | 'put' | 'delete'](
-    `${String(ROUTING_PREFIX)}${String(route.path)}`,
-    route.func as unknown as (req: ExpressRequest, res: Response, next: NextFunction) => void
-  )
 })
 
 const paymentMiddleware = createPaymentMiddleware({
