@@ -28,7 +28,7 @@ const {
   SERVER_PRIVATE_KEY,
   ENABLE_WEBSOCKETS = 'true',
   ROUTING_PREFIX = '',
-  STORAGE_URL
+  WALLET_STORAGE_URL
 } = process.env
 
 const knex: knexLib.Knex = (knexLib as any).default?.(
@@ -80,7 +80,7 @@ console.log('[DEBUG] Generated Private Key:', privateKey.toHex())
 const wallet = await Setup.createWalletClientNoEnv({
   chain: 'main',
   rootKeyHex: SERVER_PRIVATE_KEY,
-  storageUrl: STORAGE_URL // https://storage.babbage.systems
+  storageUrl: WALLET_STORAGE_URL // https://storage.babbage.systems
 })
 
 // Check the derived public key
