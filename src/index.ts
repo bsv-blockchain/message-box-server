@@ -48,10 +48,10 @@ const parsedEnvPort = Number(process.env.HTTP_PORT)
 const HTTP_PORT: number = NODE_ENV !== 'development'
   ? 3000
   : !isNaN(parsedPort) && parsedPort > 0
-      ? parsedPort
-      : !isNaN(parsedEnvPort) && parsedEnvPort > 0
-          ? parsedEnvPort
-          : 8080
+    ? parsedPort
+    : !isNaN(parsedEnvPort) && parsedEnvPort > 0
+      ? parsedEnvPort
+      : 8080
 
 // Initialize Wallet for Authentication
 if (SERVER_PRIVATE_KEY === undefined || SERVER_PRIVATE_KEY === null || SERVER_PRIVATE_KEY.trim() === '') {
@@ -296,7 +296,9 @@ let authMiddlewareCounter = 0
 
 const authMiddleware = createAuthMiddleware({
   wallet,
-  allowUnauthenticated: false
+  allowUnauthenticated: false,
+  logger: console,
+  logLevel: 'debug'
 })
 
 // Track auth middleware executions
@@ -395,7 +397,7 @@ http.listen(HTTP_PORT, () => {
   }
 
   (async () => {
-    await delay(5000)
+    await delay(8000)
     await knex.migrate.latest()
   })().catch((error) => { console.error(error) })
 })
