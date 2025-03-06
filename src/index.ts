@@ -323,23 +323,23 @@ app.use((req: ExpressRequest, res: Response, next: NextFunction): void => {
   next()
 })
 
-// const paymentMiddleware = createPaymentMiddleware({
-//   wallet,
-//   calculateRequestPrice: async (req) => {
-//     console.log('[DEBUG] Payment Middleware Triggered')
+const paymentMiddleware = createPaymentMiddleware({
+  wallet,
+  calculateRequestPrice: async (req) => {
+    console.log('[DEBUG] Payment Middleware Triggered')
 
-//     const body = req.body as { message?: { body: string }, priority?: boolean }
+    const body = req.body as { message?: { body: string }, priority?: boolean }
 
-//     if (body.message?.body == null) {
-//       console.warn('[WARNING] No message body provided, skipping payment calculation.')
-//       return 0
-//     }
+    if (body.message?.body == null) {
+      console.warn('[WARNING] No message body provided, skipping payment calculation.')
+      return 0
+    }
 
-//     const price = calculateMessagePrice(body.message.body, body.priority ?? false)
-//     console.log(`[DEBUG] Calculated payment requirement: ${price} satoshis`)
-//     return price
-//   }
-// })
+    const price = calculateMessagePrice(body.message.body, body.priority ?? false)
+    console.log(`[DEBUG] Calculated payment requirement: ${price} satoshis`)
+    return price
+  }
+})
 
 // Post-Auth Routes
 postAuth.forEach((route) => {
@@ -353,7 +353,7 @@ postAuth.forEach((route) => {
     app[route.type as 'get' | 'post' | 'put' | 'delete'](
       `${String(ROUTING_PREFIX)}${String(route.path)}`,
       loggingMiddleware,
-      // paymentMiddleware, // Apply payment middleware specifically for /sendMessage
+      paymentMiddleware, // Apply payment middleware specifically for /sendMessage
       sendMessageRoute.func as unknown as RequestHandler
     )
   } else {
