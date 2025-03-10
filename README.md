@@ -1,4 +1,5 @@
-# PeerServ
+# Message Box Server
+
 Facilitates general secure peer-to-peer message exchanges between parties.
 
 ## Overview
