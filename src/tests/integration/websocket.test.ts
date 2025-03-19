@@ -1,4 +1,4 @@
-import { AuthSocketClient } from '@bsv/authsocket'
+import { AuthSocketClient } from '@bsv/authsocket-client'
 import { WalletClient } from '@bsv/sdk'
 
 describe('MessageBoxClient WebSocket Integration', () => {
