@@ -1,7 +1,7 @@
 import { Request, Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
-import { PrivateKey, PublicKey } from '@bsv/sdk'
+import { PublicKey } from '@bsv/sdk'
 import { webcrypto } from 'crypto'
 
 (global as any).self = { crypto: webcrypto }
