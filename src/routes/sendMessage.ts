@@ -41,28 +41,12 @@ if (SERVER_PRIVATE_KEY == null || SERVER_PRIVATE_KEY.trim() === '') {
   throw new Error('SERVER_PRIVATE_KEY is not defined in the environment variables.')
 }
 
-const privateKey = PrivateKey.fromRandom()
-console.log('[DEBUG] Generated Private Key:', privateKey.toHex())
-// const wallet = new ProtoWallet(privateKey)
-
-export function calculateMessagePrice (message: string, priority: boolean = false): number {
+export function calculateMessagePrice(message: string, priority: boolean = false): number {
   const basePrice = 2 // Base fee in satoshis
   const sizeFactor = Math.ceil(Buffer.byteLength(message, 'utf8') / 1024) * 3 // 50 satoshis per KB
 
   return basePrice + sizeFactor
 }
-
-// // Create Payment Middleware
-// const paymentMiddleware = createPaymentMiddleware({
-//   wallet,
-//   calculateRequestPrice: async (req) => {
-//     const body = req.body as SendMessageRequestBody
-//     if (!body?.message?.body?.trim()) {
-//       return 0 // Free if there's no valid message body
-//     }
-//     return calculateMessagePrice(body.message.body, body.priority ?? false)
-//   }
-// })
 
 export default {
   type: 'post',
@@ -86,18 +70,6 @@ export default {
     console.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2))
 
     try {
-      // // **Validate Payment**
-      // const { payment, message } = req.body
-      // if (!payment?.satoshisPaid) {
-      //   console.error('[ERROR] Payment is required but missing! Received:', JSON.stringify(payment, null, 2))
-      //   return res.status(402).json({
-      //     status: 'error',
-      //     code: 'ERR_PAYMENT_REQUIRED',
-      //     description: 'Payment is required before sending messages. Ensure the correct payment field is provided.'
-      //   })
-      // }
-      // console.log(`[DEBUG] Payment verified: ${payment.satoshisPaid} satoshis paid.`)
-
       const { message } = req.body // Ensure message is extracted properly
       if (message == null) {
         console.error('[ERROR] No message provided in request body!')

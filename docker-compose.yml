@@ -17,8 +17,7 @@ services:
       KNEX_DB_CLIENT: mysql
       KNEX_DB_CONNECTION: '{"port":3306,"host":"peerserv-mysql","user":"root","password":"test","database":"peerserv"}'
       NODE_ENV: development
-      MIGRATE_KEY: 'my-grate-key'
-      DOJO_URL: 'https://staging-dojo.babbage.systems'
+      WALLET_STORAGE_URL: 'https://storage.babbage.systems'
     depends_on:
       - peerserv-mysql   # ensures MySQL starts before the Node service tries to connect
 

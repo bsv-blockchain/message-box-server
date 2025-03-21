@@ -28,7 +28,7 @@ const {
   SERVER_PRIVATE_KEY,
   ENABLE_WEBSOCKETS = 'true',
   ROUTING_PREFIX = '',
-  STORAGE_URL
+  WALLET_STORAGE_URL
 } = process.env
 
 const knex: knexLib.Knex = (knexLib as any).default?.(
@@ -48,10 +48,10 @@ const parsedEnvPort = Number(process.env.HTTP_PORT)
 const HTTP_PORT: number = NODE_ENV !== 'development'
   ? 3000
   : !isNaN(parsedPort) && parsedPort > 0
-      ? parsedPort
-      : !isNaN(parsedEnvPort) && parsedEnvPort > 0
-          ? parsedEnvPort
-          : 8080
+    ? parsedPort
+    : !isNaN(parsedEnvPort) && parsedEnvPort > 0
+      ? parsedEnvPort
+      : 8080
 
 // Initialize Wallet for Authentication
 if (SERVER_PRIVATE_KEY === undefined || SERVER_PRIVATE_KEY === null || SERVER_PRIVATE_KEY.trim() === '') {
@@ -74,18 +74,11 @@ app.use((req, res, next) => {
   }
 })
 
-const privateKey = PrivateKey.fromRandom()
-console.log('[DEBUG] Generated Private Key:', privateKey.toHex())
-
 const wallet = await Setup.createWalletClientNoEnv({
   chain: 'main',
   rootKeyHex: SERVER_PRIVATE_KEY,
-  storageUrl: STORAGE_URL // https://storage.babbage.systems
+  storageUrl: WALLET_STORAGE_URL // https://storage.babbage.systems
 })
-
-// Check the derived public key
-const publicKey = privateKey.toPublicKey()
-console.log('[DEBUG] Derived Public Key:', publicKey.toString())
 
 // Create HTTP server
 /* eslint-disable @typescript-eslint/no-misused-promises */
@@ -296,14 +289,20 @@ let authMiddlewareCounter = 0
 
 const authMiddleware = createAuthMiddleware({
   wallet,
-  allowUnauthenticated: false
+  allowUnauthenticated: false,
+  logger: console,
+  logLevel: 'debug'
 })
 
-// Track auth middleware executions
-app.use((req: express.Request, res: express.Response, next: express.NextFunction): void => {
-  authMiddlewareCounter++
-  console.log(`[DEBUG] AuthMiddleware Executed (${authMiddlewareCounter} times) for: ${req.url}`)
-  next()
+// Serve Static Files
+app.use(express.static('public'))
+
+// Pre-Auth Routes
+preAuth.forEach((route) => {
+  app[route.type as 'get' | 'post' | 'put' | 'delete'](
+    `${String(ROUTING_PREFIX)}${String(route.path)}`,
+    route.func as unknown as (req: ExpressRequest, res: Response, next: NextFunction) => void
+  )
 })
 
 // Apply authentication middleware
@@ -322,17 +321,6 @@ app.use((req: ExpressRequest, res: Response, next: NextFunction): void => {
   }
 
   next()
-})
-
-// Serve Static Files
-app.use(express.static('public'))
-
-// Pre-Auth Routes
-preAuth.forEach((route) => {
-  app[route.type as 'get' | 'post' | 'put' | 'delete'](
-    `${String(ROUTING_PREFIX)}${String(route.path)}`,
-    route.func as unknown as (req: ExpressRequest, res: Response, next: NextFunction) => void
-  )
 })
 
 const paymentMiddleware = createPaymentMiddleware({
@@ -395,7 +383,7 @@ http.listen(HTTP_PORT, () => {
   }
 
   (async () => {
-    await delay(5000)
+    await delay(8000)
     await knex.migrate.latest()
   })().catch((error) => { console.error(error) })
 })
