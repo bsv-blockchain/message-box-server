@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
+import { Logger } from '../utils/logger.js'
 
 const { NODE_ENV = 'development' } = process.env
 
@@ -35,7 +36,7 @@ export default {
     try {
       const { messageIds } = req.body
 
-      console.log('[SERVER] acknowledgeMessage called for messageIds:', messageIds, 'by', req.auth.identityKey)
+      Logger.log('[SERVER] acknowledgeMessage called for messageIds:', messageIds, 'by', req.auth.identityKey)
 
       // Validate request body
       if ((messageIds == null) || (Array.isArray(messageIds) && messageIds.length === 0)) {
@@ -74,7 +75,7 @@ export default {
 
       return res.status(200).json({ status: 'success' })
     } catch (e) {
-      console.error(e)
+      Logger.error(e)
       return res.status(500).json({
         status: 'error',
         code: 'ERR_INTERNAL_ERROR',

@@ -11,6 +11,7 @@ import knexLib from 'knex'
 import knexConfig from '../knexfile.js'
 import { Setup } from '@bsv/wallet-toolbox'
 import sendMessageRoute from './routes/sendMessage.js'
+import { Logger } from './utils/logger.js'
 
 // Optional WebSocket import
 import { AuthSocketServer } from '@bsv/authsocket'
@@ -29,6 +30,10 @@ const {
   ROUTING_PREFIX = '',
   WALLET_STORAGE_URL
 } = process.env
+
+if (NODE_ENV === 'development' || process.env.LOGGING_ENABLED === 'true') {
+  Logger.enable()
+}
 
 const knex: knexLib.Knex = (knexLib as any).default?.(
   NODE_ENV === 'production' || NODE_ENV === 'staging'
@@ -87,7 +92,7 @@ const http = createServer(app)
 let io: AuthSocketServer | null = null
 
 if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
-  console.log('[WEBSOCKET] Initializing WebSocket support...')
+  Logger.log('[WEBSOCKET] Initializing WebSocket support...')
   io = new AuthSocketServer(http, {
     wallet,
     cors: {
@@ -100,53 +105,53 @@ if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
   const authenticatedSockets = new Map<string, string>()
 
   io.on('connection', (socket) => {
-    console.log('[WEBSOCKET] New connection established.')
+    Logger.log('[WEBSOCKET] New connection established.')
 
     if (typeof socket.identityKey === 'string' && socket.identityKey.trim() !== '') {
       try {
         const parsedIdentityKey = PublicKey.fromString(socket.identityKey)
-        console.log('[DEBUG] Parsed WebSocket Identity Key Successfully:', parsedIdentityKey.toString())
+        Logger.log('[DEBUG] Parsed WebSocket Identity Key Successfully:', parsedIdentityKey.toString())
 
         authenticatedSockets.set(socket.id, parsedIdentityKey.toString())
-        console.log('[WEBSOCKET] Identity key stored for socket ID:', socket.id)
+        Logger.log('[WEBSOCKET] Identity key stored for socket ID:', socket.id)
 
         // Send confirmation immediately if identity key is provided on connection
         void socket.emit('authenticationSuccess', { status: 'success' })
       } catch (error) {
-        console.error('[ERROR] Failed to parse WebSocket identity key:', error)
+        Logger.error('[ERROR] Failed to parse WebSocket identity key:', error)
       }
     } else {
-      console.warn('[WARN] WebSocket connection received without identity key. Waiting for authentication...')
+      Logger.warn('[WARN] WebSocket connection received without identity key. Waiting for authentication...')
 
       let identityKeyHandled = false
 
       const authListener = async (data: { identityKey?: string }): Promise<void> => {
         if (identityKeyHandled) return
 
-        console.log('[WEBSOCKET] Received authentication data:', data)
+        Logger.log('[WEBSOCKET] Received authentication data:', data)
 
         if (data !== null && data !== undefined && typeof data.identityKey === 'string' && data.identityKey.trim().length > 0) {
           try {
             const parsedIdentityKey = PublicKey.fromString(data.identityKey)
-            console.log('[DEBUG] Retrieved and parsed Identity Key after connection:', parsedIdentityKey.toString())
+            Logger.log('[DEBUG] Retrieved and parsed Identity Key after connection:', parsedIdentityKey.toString())
 
             authenticatedSockets.set(socket.id, parsedIdentityKey.toString())
-            console.log('[WEBSOCKET] Stored authenticated Identity Key for socket ID:', socket.id)
+            Logger.log('[WEBSOCKET] Stored authenticated Identity Key for socket ID:', socket.id)
 
             identityKeyHandled = true
 
-            console.log(`New authenticated WebSocket connection from: ${authenticatedSockets.get(socket.id) ?? 'unknown'}`)
+            Logger.log(`New authenticated WebSocket connection from: ${authenticatedSockets.get(socket.id) ?? 'unknown'}`)
 
             // Emit authentication success message
             await socket.emit('authenticationSuccess', { status: 'success' }).catch(error => {
-              console.error('[WEBSOCKET ERROR] Failed to send authentication success event:', error)
+              Logger.error('[WEBSOCKET ERROR] Failed to send authentication success event:', error)
             })
           } catch (error) {
-            console.error('[ERROR] Failed to parse Identity Key from authenticated event:', error)
+            Logger.error('[ERROR] Failed to parse Identity Key from authenticated event:', error)
             await socket.emit('authenticationFailed', { reason: 'Invalid identity key format' })
           }
         } else {
-          console.warn('[WARN] Invalid or missing identity key in authentication event.')
+          Logger.warn('[WARN] Invalid or missing identity key in authentication event.')
           await socket.emit('authenticationFailed', { reason: 'Missing identity key' })
         }
       }
@@ -160,7 +165,7 @@ if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
       'sendMessage',
       async (data: { roomId: string, message: { messageId: string, recipient: string, body: string } }): Promise<void> => {
         if (typeof data !== 'object' || data == null) {
-          console.error('[WEBSOCKET ERROR] Invalid data object received.')
+          Logger.error('[WEBSOCKET ERROR] Invalid data object received.')
           await socket.emit('messageFailed', { reason: 'Invalid data object' })
           return
         }
@@ -168,43 +173,43 @@ if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
         const { roomId, message } = data
 
         if (!authenticatedSockets.has(socket.id)) {
-          console.warn('[WEBSOCKET] Unauthorized attempt to send a message.')
+          Logger.warn('[WEBSOCKET] Unauthorized attempt to send a message.')
           await socket.emit('paymentFailed', { reason: 'Unauthorized: WebSocket not authenticated' })
           return
         }
 
-        console.log(`[WEBSOCKET] Processing sendMessage for room: ${roomId}`)
+        Logger.log(`[WEBSOCKET] Processing sendMessage for room: ${roomId}`)
 
         try {
           if (typeof roomId !== 'string' || roomId.trim() === '') {
-            console.error('[WEBSOCKET ERROR] Invalid roomId:', roomId)
+            Logger.error('[WEBSOCKET ERROR] Invalid roomId:', roomId)
             await socket.emit('messageFailed', { reason: 'Invalid room ID' })
             return
           }
 
           if (typeof message !== 'object' || message == null) {
-            console.error('[WEBSOCKET ERROR] Invalid message object:', message)
+            Logger.error('[WEBSOCKET ERROR] Invalid message object:', message)
             await socket.emit('messageFailed', { reason: 'Invalid message object' })
             return
           }
 
           if (typeof message.body !== 'string' || message.body.trim() === '') {
-            console.error('[WEBSOCKET ERROR] Invalid message body:', message.body)
+            Logger.error('[WEBSOCKET ERROR] Invalid message body:', message.body)
             await socket.emit('messageFailed', { reason: 'Invalid message body' })
             return
           }
 
-          console.log(`[WEBSOCKET] Acknowledging message ${message.messageId} to sender.`)
+          Logger.log(`[WEBSOCKET] Acknowledging message ${message.messageId} to sender.`)
 
           const ackPayload = {
             status: 'success',
             messageId: message.messageId
           }
 
-          console.log(`[WEBSOCKET] Emitting ack event: sendMessageAck-${roomId}`)
+          Logger.log(`[WEBSOCKET] Emitting ack event: sendMessageAck-${roomId}`)
 
           socket.emit(`sendMessageAck-${roomId}`, ackPayload).catch((error) => {
-            console.error(`[WEBSOCKET ERROR] Failed to emit sendMessageAck-${roomId}:`, error)
+            Logger.error(`[WEBSOCKET ERROR] Failed to emit sendMessageAck-${roomId}:`, error)
           })
 
           // Store message in the database just like HTTP sendMessage route
@@ -212,15 +217,15 @@ if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
             const parts = roomId.split('-')
             const messageBoxType = parts.length > 1 ? parts[1] : 'default'
 
-            console.log(`[WEBSOCKET] Parsed messageBoxType: ${messageBoxType}`)
-            console.log(`[WEBSOCKET] Attempting to store message for recipient: ${message.recipient}, box type: ${messageBoxType}`)
+            Logger.log(`[WEBSOCKET] Parsed messageBoxType: ${messageBoxType}`)
+            Logger.log(`[WEBSOCKET] Attempting to store message for recipient: ${message.recipient}, box type: ${messageBoxType}`)
 
             let messageBox = await knex('messageBox')
               .where({ identityKey: message.recipient, type: messageBoxType })
               .first()
 
             if (messageBox === null || messageBox === undefined) {
-              console.log('[WEBSOCKET] messageBox not found. Creating new messageBox.')
+              Logger.log('[WEBSOCKET] messageBox not found. Creating new messageBox.')
               await knex('messageBox').insert({
                 identityKey: message.recipient,
                 type: messageBoxType,
@@ -237,9 +242,9 @@ if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
             const messageBoxId = messageBox?.messageBoxId ?? null
 
             if (messageBoxId === null || messageBoxId === undefined) {
-              console.warn('[WEBSOCKET WARNING] messageBoxId is null — message may not be stored correctly!')
+              Logger.warn('[WEBSOCKET WARNING] messageBoxId is null — message may not be stored correctly!')
             } else {
-              console.log(`[WEBSOCKET] Resolved messageBoxId: ${String(messageBoxId)}`)
+              Logger.log(`[WEBSOCKET] Resolved messageBoxId: ${String(messageBoxId)}`)
             }
 
             const senderKey = authenticatedSockets.get(socket.id) ?? null
@@ -258,28 +263,28 @@ if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
               .ignore()
 
             if (insertResult.length === 0) {
-              console.warn('[WEBSOCKET WARNING] Message insert was ignored due to conflict (duplicate messageId?)')
+              Logger.warn('[WEBSOCKET WARNING] Message insert was ignored due to conflict (duplicate messageId?)')
             } else {
-              console.log('[WEBSOCKET] Message successfully stored in DB.')
+              Logger.log('[WEBSOCKET] Message successfully stored in DB.')
             }
           } catch (dbError) {
-            console.error('[WEBSOCKET ERROR] Failed to store message in DB:', dbError)
+            Logger.error('[WEBSOCKET ERROR] Failed to store message in DB:', dbError)
             await socket.emit('messageFailed', { reason: 'Failed to store message' })
             return
           }
 
           if (io != null) {
-            console.log(`[WEBSOCKET] Emitting message to room ${roomId}`)
+            Logger.log(`[WEBSOCKET] Emitting message to room ${roomId}`)
             io.emit(`sendMessage-${roomId}`, {
               sender: authenticatedSockets.get(socket.id),
               messageId: message.messageId,
               body: message.body
             })
           } else {
-            console.error('[WEBSOCKET ERROR] io is null, cannot emit message.')
+            Logger.error('[WEBSOCKET ERROR] io is null, cannot emit message.')
           }
         } catch (error) {
-          console.error('[WEBSOCKET ERROR] Unexpected failure in sendMessage handler:', error)
+          Logger.error('[WEBSOCKET ERROR] Unexpected failure in sendMessage handler:', error)
           await socket.emit('messageFailed', { reason: 'Unexpected error occurred' })
         }
       }
@@ -288,41 +293,41 @@ if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
     // Re-adding Join Room Handling
     socket.on('joinRoom', async (roomId: string) => {
       if (!authenticatedSockets.has(socket.id)) {
-        console.warn('[WEBSOCKET] Unauthorized attempt to join a room.')
+        Logger.warn('[WEBSOCKET] Unauthorized attempt to join a room.')
         await socket.emit('joinFailed', { reason: 'Unauthorized: WebSocket not authenticated' })
         return
       }
 
       if (roomId == null || typeof roomId !== 'string' || roomId.trim() === '') {
-        console.error('[WEBSOCKET ERROR] Invalid roomId:', roomId)
+        Logger.error('[WEBSOCKET ERROR] Invalid roomId:', roomId)
         await socket.emit('joinFailed', { reason: 'Invalid room ID' })
         return
       }
 
-      console.log(`[WEBSOCKET] User ${socket.id} joined room ${roomId}`)
+      Logger.log(`[WEBSOCKET] User ${socket.id} joined room ${roomId}`)
       await socket.emit('joinedRoom', { roomId })
     })
 
     // Re-adding Leave Room Handling
     socket.on('leaveRoom', async (roomId: string) => {
       if (!authenticatedSockets.has(socket.id)) {
-        console.warn('[WEBSOCKET] Unauthorized attempt to leave a room.')
+        Logger.warn('[WEBSOCKET] Unauthorized attempt to leave a room.')
         await socket.emit('leaveFailed', { reason: 'Unauthorized: WebSocket not authenticated' })
         return
       }
 
       if (roomId == null || roomId === '' || typeof roomId !== 'string' || roomId.trim() === '') {
-        console.error('[WEBSOCKET ERROR] Invalid roomId:', roomId)
+        Logger.error('[WEBSOCKET ERROR] Invalid roomId:', roomId)
         await socket.emit('leaveFailed', { reason: 'Invalid room ID' })
         return
       }
 
-      console.log(`[WEBSOCKET] User ${socket.id} left room ${roomId}`)
+      Logger.log(`[WEBSOCKET] User ${socket.id} left room ${roomId}`)
       await socket.emit('leftRoom', { roomId })
     })
 
     socket.on('disconnect', (reason: string) => {
-      console.log(`[WEBSOCKET] Disconnected: ${reason}`)
+      Logger.log(`[WEBSOCKET] Disconnected: ${reason}`)
       authenticatedSockets.delete(socket.id)
     })
   })
@@ -340,12 +345,12 @@ interface AuthenticatedRequest extends ExpressRequest {
 
 // Log authentication **before** running auth middleware
 app.use((req: ExpressRequest, res: Response, next: NextFunction): void => {
-  console.log('[DEBUG] Incoming Request:', req.method, req.url)
-  console.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
-  console.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2))
+  Logger.log('[DEBUG] Incoming Request:', req.method, req.url)
+  Logger.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
+  Logger.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2))
 
   if (req.headers['x-bsv-auth-identity-key'] == null) {
-    console.warn('[WARNING] Missing x-bsv-auth-identity-key in headers')
+    Logger.warn('[WARNING] Missing x-bsv-auth-identity-key in headers')
   }
 
   next()
@@ -375,13 +380,13 @@ app.use(authMiddleware)
 // Log authentication **after** auth middleware runs
 app.use((req: ExpressRequest, res: Response, next: NextFunction): void => {
   const authRequest = req as unknown as AuthenticatedRequest
-  console.log('[DEBUG] After Authentication Middleware:', req.url)
-  console.log('[DEBUG] Authenticated User Identity:', authRequest.auth?.identityKey ?? 'Not Provided')
+  Logger.log('[DEBUG] After Authentication Middleware:', req.url)
+  Logger.log('[DEBUG] Authenticated User Identity:', authRequest.auth?.identityKey ?? 'Not Provided')
 
   if (authRequest.auth?.identityKey == null) {
-    console.warn('[WARNING] AuthMiddleware did not set req.auth correctly!')
+    Logger.warn('[WARNING] AuthMiddleware did not set req.auth correctly!')
   } else {
-    console.log('[DEBUG] Authentication Successful:', authRequest.auth.identityKey)
+    Logger.log('[DEBUG] Authentication Successful:', authRequest.auth.identityKey)
   }
 
   next()
@@ -390,17 +395,17 @@ app.use((req: ExpressRequest, res: Response, next: NextFunction): void => {
 // const paymentMiddleware = createPaymentMiddleware({
 //   wallet,
 //   calculateRequestPrice: async (req) => {
-//     console.log('[DEBUG] Payment Middleware Triggered')
+//     Logger.log('[DEBUG] Payment Middleware Triggered')
 
 //     const body = req.body as { message?: { body: string }, priority?: boolean }
 
 //     if (body.message?.body == null) {
-//       console.warn('[WARNING] No message body provided, skipping payment calculation.')
+//       Logger.warn('[WARNING] No message body provided, skipping payment calculation.')
 //       return 0
 //     }
 
 //     const price = calculateMessagePrice(body.message.body, body.priority ?? false)
-//     console.log(`[DEBUG] Calculated payment requirement: ${price} satoshis`)
+//     Logger.log(`[DEBUG] Calculated payment requirement: ${price} satoshis`)
 //     return price
 //   }
 // })
@@ -408,8 +413,8 @@ app.use((req: ExpressRequest, res: Response, next: NextFunction): void => {
 // Post-Auth Routes
 postAuth.forEach((route) => {
   const loggingMiddleware: RequestHandler = (req, res, next) => {
-    console.log('[DEBUG] Authenticated Request to:', req.url)
-    console.log('[DEBUG] User Identity:', req.body.identityKey ?? 'Not Provided')
+    Logger.log('[DEBUG] Authenticated Request to:', req.url)
+    Logger.log('[DEBUG] User Identity:', req.body.identityKey ?? 'Not Provided')
     next()
   }
 
@@ -431,7 +436,7 @@ postAuth.forEach((route) => {
 
 // 404 Route Not Found Handler
 app.use((req: ExpressRequest, res: Response) => {
-  console.log('404', req.url)
+  Logger.log('404', req.url)
   res.status(404).json({
     status: 'error',
     code: 'ERR_ROUTE_NOT_FOUND',
@@ -441,7 +446,7 @@ app.use((req: ExpressRequest, res: Response) => {
 
 // Start API Server
 http.listen(HTTP_PORT, () => {
-  console.log('MessageBox listening on port', HTTP_PORT)
+  Logger.log('MessageBox listening on port', HTTP_PORT)
   if (NODE_ENV !== 'development' && process.env.SKIP_NGINX !== 'true') {
     spawn('nginx', [], { stdio: ['inherit', 'inherit', 'inherit'] })
   }
@@ -449,7 +454,7 @@ http.listen(HTTP_PORT, () => {
   (async () => {
     await delay(8000)
     await knex.migrate.latest()
-  })().catch((error) => { console.error(error) })
+  })().catch((error) => { Logger.error(error) })
 })
 
 const delay = async (ms: number): Promise<void> =>

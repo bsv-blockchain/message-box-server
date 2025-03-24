@@ -3,6 +3,7 @@ import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
 import { PublicKey } from '@bsv/sdk'
 import { webcrypto } from 'crypto'
+import { Logger } from '../utils/logger.js'
 
 (global as any).self = { crypto: webcrypto }
 
@@ -65,14 +66,14 @@ export default {
   // middleware: [paymentMiddleware], // Attach paymentMiddleware here
 
   func: async (req: SendMessageRequest, res: Response): Promise<Response> => {
-    console.log('[DEBUG] Processing /sendMessage request...')
-    console.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
-    console.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2))
+    Logger.log('[DEBUG] Processing /sendMessage request...')
+    Logger.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
+    Logger.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2))
 
     try {
       const { message } = req.body // Ensure message is extracted properly
       if (message == null) {
-        console.error('[ERROR] No message provided in request body!')
+        Logger.error('[ERROR] No message provided in request body!')
         return res.status(400).json({
           status: 'error',
           code: 'ERR_MESSAGE_REQUIRED',
@@ -97,15 +98,15 @@ export default {
         return res.status(400).json({ status: 'error', code: 'ERR_INVALID_MESSAGE_BODY', description: 'Invalid message body.' })
       }
 
-      console.log('[DEBUG] Validating recipient key:', message.recipient)
+      Logger.log('[DEBUG] Validating recipient key:', message.recipient)
       try {
         PublicKey.fromString(message.recipient)
-        console.log('[DEBUG] Parsed Recipient Public Key Successfully:', message.recipient)
+        Logger.log('[DEBUG] Parsed Recipient Public Key Successfully:', message.recipient)
       } catch (error) {
         return res.status(400).json({ status: 'error', code: 'ERR_INVALID_RECIPIENT_KEY', description: 'Invalid recipient key format.' })
       }
 
-      console.log(`[DEBUG] Storing message for recipient: ${message.recipient}`)
+      Logger.log(`[DEBUG] Storing message for recipient: ${message.recipient}`)
 
       // **Retrieve or Create MessageBox**
       let messageBox = await knex('messageBox')
@@ -113,7 +114,7 @@ export default {
         .first()
 
       if (messageBox == null) {
-        console.log('[DEBUG] MessageBox not found, creating a new one...')
+        Logger.log('[DEBUG] MessageBox not found, creating a new one...')
         await knex('messageBox').insert({
           identityKey: message.recipient,
           type: message.messageBox,
@@ -129,7 +130,7 @@ export default {
         .first()
 
       // **Insert the message into the messages table**
-      console.log('[DEBUG] Inserting message into messages table...')
+      Logger.log('[DEBUG] Inserting message into messages table...')
       try {
         const messageBoxId = messageBox?.messageBoxId ?? null // Ensure valid messageBoxId
 
@@ -152,7 +153,7 @@ export default {
         throw error
       }
 
-      console.log('[DEBUG] Message successfully inserted into messages table.')
+      Logger.log('[DEBUG] Message successfully inserted into messages table.')
 
       return res.status(200).json({
         status: 'success',
@@ -160,7 +161,7 @@ export default {
         message: `Your message has been sent to ${message.recipient}`
       })
     } catch (error) {
-      console.error('[ERROR] Internal Server Error:', error)
+      Logger.error('[ERROR] Internal Server Error:', error)
       return res.status(500).json({ status: 'error', code: 'ERR_INTERNAL', description: 'An internal error has occurred.' })
     }
   }
