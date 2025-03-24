@@ -10,8 +10,7 @@ import { webcrypto } from 'crypto'
 import knexLib from 'knex'
 import knexConfig from '../knexfile.js'
 import { Setup } from '@bsv/wallet-toolbox'
-import { createPaymentMiddleware } from '@bsv/payment-express-middleware'
-import sendMessageRoute, { calculateMessagePrice } from './routes/sendMessage.js'
+import sendMessageRoute from './routes/sendMessage.js'
 
 // Optional WebSocket import
 import { AuthSocketServer } from '@bsv/authsocket'
@@ -48,10 +47,10 @@ const parsedEnvPort = Number(process.env.HTTP_PORT)
 const HTTP_PORT: number = NODE_ENV !== 'development'
   ? 3000
   : !isNaN(parsedPort) && parsedPort > 0
-    ? parsedPort
-    : !isNaN(parsedEnvPort) && parsedEnvPort > 0
-      ? parsedEnvPort
-      : 8080
+      ? parsedPort
+      : !isNaN(parsedEnvPort) && parsedEnvPort > 0
+          ? parsedEnvPort
+          : 8080
 
 // Initialize Wallet for Authentication
 if (SERVER_PRIVATE_KEY === undefined || SERVER_PRIVATE_KEY === null || SERVER_PRIVATE_KEY.trim() === '') {
@@ -159,7 +158,7 @@ if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
     // Re-adding Send Message Handling
     socket.on(
       'sendMessage',
-      async (data: { roomId: string, message: { messageId: string, body: string } }): Promise<void> => {
+      async (data: { roomId: string, message: { messageId: string, recipient: string, body: string } }): Promise<void> => {
         if (typeof data !== 'object' || data == null) {
           console.error('[WEBSOCKET ERROR] Invalid data object received.')
           await socket.emit('messageFailed', { reason: 'Invalid data object' })
@@ -195,26 +194,93 @@ if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
             return
           }
 
-          console.log(`[WEBSOCKET] Broadcasting message to room ${roomId}`)
+          console.log(`[WEBSOCKET] Acknowledging message ${message.messageId} to sender.`)
+
+          const ackPayload = {
+            status: 'success',
+            messageId: message.messageId
+          }
+
+          console.log(`[WEBSOCKET] Emitting ack event: sendMessageAck-${roomId}`)
+
+          socket.emit(`sendMessageAck-${roomId}`, ackPayload).catch((error) => {
+            console.error(`[WEBSOCKET ERROR] Failed to emit sendMessageAck-${roomId}:`, error)
+          })
+
+          // Store message in the database just like HTTP sendMessage route
+          try {
+            const parts = roomId.split('-')
+            const messageBoxType = parts.length > 1 ? parts[1] : 'default'
+
+            console.log(`[WEBSOCKET] Parsed messageBoxType: ${messageBoxType}`)
+            console.log(`[WEBSOCKET] Attempting to store message for recipient: ${message.recipient}, box type: ${messageBoxType}`)
+
+            let messageBox = await knex('messageBox')
+              .where({ identityKey: message.recipient, type: messageBoxType })
+              .first()
+
+            if (messageBox === null || messageBox === undefined) {
+              console.log('[WEBSOCKET] messageBox not found. Creating new messageBox.')
+              await knex('messageBox').insert({
+                identityKey: message.recipient,
+                type: messageBoxType,
+                created_at: new Date(),
+                updated_at: new Date()
+              })
+            }
+
+            messageBox = await knex('messageBox')
+              .where({ identityKey: message.recipient, type: messageBoxType })
+              .select('messageBoxId')
+              .first()
+
+            const messageBoxId = messageBox?.messageBoxId ?? null
+
+            if (messageBoxId === null || messageBoxId === undefined) {
+              console.warn('[WEBSOCKET WARNING] messageBoxId is null — message may not be stored correctly!')
+            } else {
+              console.log(`[WEBSOCKET] Resolved messageBoxId: ${String(messageBoxId)}`)
+            }
+
+            const senderKey = authenticatedSockets.get(socket.id) ?? null
+
+            const insertResult = await knex('messages')
+              .insert({
+                messageId: message.messageId,
+                messageBoxId,
+                sender: senderKey,
+                recipient: message.recipient,
+                body: message.body,
+                created_at: new Date(),
+                updated_at: new Date()
+              })
+              .onConflict('messageId')
+              .ignore()
+
+            if (insertResult.length === 0) {
+              console.warn('[WEBSOCKET WARNING] Message insert was ignored due to conflict (duplicate messageId?)')
+            } else {
+              console.log('[WEBSOCKET] Message successfully stored in DB.')
+            }
+          } catch (dbError) {
+            console.error('[WEBSOCKET ERROR] Failed to store message in DB:', dbError)
+            await socket.emit('messageFailed', { reason: 'Failed to store message' })
+            return
+          }
+
           if (io != null) {
+            console.log(`[WEBSOCKET] Emitting message to room ${roomId}`)
             io.emit(`sendMessage-${roomId}`, {
-              sender: authenticatedSockets.get(socket.id) ?? 'unknown',
-              ...message
-            })
-
-            console.log(`[WEBSOCKET] Acknowledging message ${message.messageId} to sender.`)
-
-            await socket.emit(`sendMessageAck-${roomId}`, {
-              status: 'success',
-              messageId: message.messageId
+              sender: authenticatedSockets.get(socket.id),
+              messageId: message.messageId,
+              body: message.body
             })
           } else {
-            console.error('[WEBSOCKET ERROR] WebSocket server is not initialized.')
-            await socket.emit('messageFailed', { reason: 'WebSocket server not initialized' })
+            console.error('[WEBSOCKET ERROR] io is null, cannot emit message.')
           }
         } catch (error) {
-          console.error('[WEBSOCKET ERROR] Failed to send message:', error)
-          await socket.emit('messageFailed', { reason: 'Message processing error' })
+          console.error('[WEBSOCKET ERROR] Unexpected failure in sendMessage handler:', error)
+          await socket.emit('messageFailed', { reason: 'Unexpected error occurred' })
         }
       }
     )

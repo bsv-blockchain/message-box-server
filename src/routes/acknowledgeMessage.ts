@@ -35,6 +35,8 @@ export default {
     try {
       const { messageIds } = req.body
 
+      console.log('[SERVER] acknowledgeMessage called for messageIds:', messageIds, 'by', req.auth.identityKey)
+
       // Validate request body
       if ((messageIds == null) || (Array.isArray(messageIds) && messageIds.length === 0)) {
         return res.status(400).json({
