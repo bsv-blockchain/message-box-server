@@ -1,5 +1,5 @@
 {
-  "name": "messagebox",
+  "name": "messagebox-server",
   "version": "1.0.0",
   "main": "./out/src/index.js",
   "type": "module",
@@ -52,11 +52,11 @@
     "typescript-eslint": "^8.24.0"
   },
   "dependencies": {
-    "@bsv/auth-express-middleware": "^1.0.13",
-    "@bsv/authsocket": "^1.0.3",
-    "@bsv/payment-express-middleware": "^1.0.3",
-    "@bsv/sdk": "^1.4.9",
-    "@bsv/wallet-toolbox": "^1.2.20",
+    "@bsv/auth-express-middleware": "^1.1.2",
+    "@bsv/authsocket": "^1.0.4",
+    "@bsv/payment-express-middleware": "^1.0.4",
+    "@bsv/sdk": "^1.4.11",
+    "@bsv/wallet-toolbox": "^1.2.23",
     "body-parser": "^1.20.3",
     "dotenv": "^8.6.0",
     "express": "^4.21.2",
