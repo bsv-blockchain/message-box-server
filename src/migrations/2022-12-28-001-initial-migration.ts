@@ -1,6 +1,6 @@
 import { Knex } from 'knex'
 
-export async function up(knex: Knex): Promise<void> {
+export async function up (knex: Knex): Promise<void> {
   await knex.schema.createTable('messageBox', (table) => {
     table.increments('messageBoxId').primary()
     table.timestamps(true, true)
@@ -25,7 +25,7 @@ export async function up(knex: Knex): Promise<void> {
   })
 }
 
-export async function down(knex: Knex): Promise<void> {
+export async function down (knex: Knex): Promise<void> {
   await knex.schema.dropTableIfExists('messages')
   await knex.schema.dropTableIfExists('messageBox')
 }

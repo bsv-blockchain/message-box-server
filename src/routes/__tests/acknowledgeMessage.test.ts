@@ -1,5 +1,5 @@
 /* eslint-env jest */
-import acknowledgeMessage from '../acknowledgeMessage'
+import acknowledgeMessage, { AcknowledgeRequest } from '../acknowledgeMessage'
 import * as mockKnex from 'mock-knex'
 import { AuthriteRequest } from '../../utils/testingInterfaces'
 import { Response } from 'express'
@@ -30,7 +30,7 @@ const mockRes: jest.Mocked<Response> = {
   clearCookie: jest.fn().mockReturnThis()
 } as unknown as jest.Mocked<Response>
 
-let validReq: AuthriteRequest
+let validReq: AcknowledgeRequest
 
 describe('acknowledgeMessage', () => {
   beforeAll(() => {
@@ -46,6 +46,9 @@ describe('acknowledgeMessage', () => {
     queryTracker.install()
 
     validReq = {
+      auth: {
+        identityKey: 'mockIdKey'
+      },
       authrite: {
         identityKey: 'mockIdKey'
       },
@@ -54,7 +57,7 @@ describe('acknowledgeMessage', () => {
       },
       get: jest.fn(),
       header: jest.fn()
-    } as unknown as AuthriteRequest
+    } as unknown as AcknowledgeRequest
   })
 
   afterEach(() => {

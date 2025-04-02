@@ -114,7 +114,44 @@ export default {
         .first()
 
       if (messageBox == null) {
-        Logger.log('[DEBUG] MessageBox not found, creating a new one...')
+        Logger.log('[DEBUG] No local messageBox found. Attempting overlay lookup...')
+
+        const overlayAd: { host: string } | undefined = await knex('overlay_ads')
+          .where({ identity_key: message.recipient })
+          .orderBy('created_at', 'desc')
+          .first()
+
+        if (typeof overlayAd?.host === 'string' && overlayAd.host.trim() !== '') {
+          Logger.log(`[OVERLAY] Forwarding message to remote host: ${overlayAd.host}`)
+          const response = await fetch(`${overlayAd.host}/sendMessage`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-bsv-auth-identity-key': req.auth?.identityKey ?? ''
+            },
+            body: JSON.stringify({ message })
+          })
+
+          if (!response.ok) {
+            const error = await response.text()
+            Logger.error('[OVERLAY] Remote host returned error:', error)
+            return res.status(502).json({
+              status: 'error',
+              code: 'ERR_REMOTE_SEND_FAILED',
+              description: error
+            })
+          }
+
+          const data = await response.json()
+          return res.status(200).json({
+            status: 'success',
+            forwarded: true,
+            host: overlayAd.host,
+            data
+          })
+        }
+
+        Logger.warn('[OVERLAY] No overlay ad found. Creating messageBox locally...')
         await knex('messageBox').insert({
           identityKey: message.recipient,
           type: message.messageBox,

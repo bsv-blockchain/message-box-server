@@ -67,6 +67,9 @@ describe('listMessages', () => {
 
     // Fully typed mock request
     validReq = {
+      auth: {
+        identityKey: 'mockIdKey'
+      },
       authrite: {
         identityKey: 'mockIdKey'
       },

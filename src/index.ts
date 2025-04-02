@@ -12,6 +12,8 @@ import knexConfig from '../knexfile.js'
 import { Setup } from '@bsv/wallet-toolbox'
 import sendMessageRoute from './routes/sendMessage.js'
 import { Logger } from './utils/logger.js'
+import { broadcastAdvertisement } from './utils/advertiserIntegration.js'
+import overlayRoutes from './routes/overlayRoutes.js'
 
 // Optional WebSocket import
 import { AuthSocketServer } from '@bsv/authsocket'
@@ -44,6 +46,8 @@ const knex: knexLib.Knex = (knexLib as any).default?.(
     ? knexConfig.production
     : knexConfig.development
 )
+
+export { knex }
 
 // Ensure PORT is properly handled
 const parsedPort = Number(PORT)
@@ -83,6 +87,8 @@ const wallet = await Setup.createWalletClientNoEnv({
   rootKeyHex: SERVER_PRIVATE_KEY,
   storageUrl: WALLET_STORAGE_URL // https://storage.babbage.systems
 })
+
+export { wallet }
 
 // Create HTTP server
 /* eslint-disable @typescript-eslint/no-misused-promises */
@@ -434,6 +440,8 @@ postAuth.forEach((route) => {
   }
 })
 
+app.use('/overlay', overlayRoutes)
+
 // 404 Route Not Found Handler
 app.use((req: ExpressRequest, res: Response) => {
   Logger.log('404', req.url)
@@ -454,6 +462,35 @@ http.listen(HTTP_PORT, () => {
   (async () => {
     await delay(8000)
     await knex.migrate.latest()
+
+    try {
+      Logger.log('[ADVERTISER] Broadcasting advertisement on startup...')
+      const result = await broadcastAdvertisement({
+        host: process.env.ADVERTISEMENT_HOST ?? `http://localhost:${HTTP_PORT}`,
+        identityKey: wallet.getPublicKey != null ? (await wallet.getPublicKey({ identityKey: true })).publicKey : '',
+        privateKey: SERVER_PRIVATE_KEY,
+        wallet
+      })
+      Logger.log('[ADVERTISER] Broadcast result:', result)
+    } catch (error) {
+      Logger.error('[ADVERTISER ERROR] Failed to broadcast on startup:', error)
+    }
+
+    // Optional: Periodic rebroadcast every 5 minutes
+    // setInterval(async () => {
+    //   try {
+    //     Logger.log('[ADVERTISER] Periodic rebroadcast starting...')
+    //     const rebroadcast = await broadcastAdvertisement({
+    //       host: process.env.ADVERTISEMENT_HOST ?? `http://localhost:${HTTP_PORT}`,
+    //       identityKey: (await wallet.getPublicKey({ identityKey: true })).publicKey,
+    //       privateKey: SERVER_PRIVATE_KEY,
+    //       wallet
+    //     })
+    //     Logger.log('[ADVERTISER] Periodic rebroadcast result:', rebroadcast)
+    //   } catch (error) {
+    //     Logger.error('[ADVERTISER ERROR] Periodic rebroadcast failed:', error)
+    //   }
+    // }, 5 * 60 * 1000) // 5 minutes
   })().catch((error) => { Logger.error(error) })
 })
 

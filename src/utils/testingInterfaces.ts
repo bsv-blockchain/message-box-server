@@ -18,6 +18,7 @@ export interface Message {
 }
 
 export interface SendMessageRequest extends Request {
+  auth: { identityKey: string }
   authrite: { identityKey: string }
   body: {
     message?: Message
@@ -28,6 +29,9 @@ export interface SendMessageRequest extends Request {
 
 // Define Request Type
 export interface AuthriteRequestMB extends Request {
+  auth: {
+    identityKey: string
+  }
   authrite: {
     identityKey: string
   }
