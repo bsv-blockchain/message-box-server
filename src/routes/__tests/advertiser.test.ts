@@ -1,6 +1,6 @@
 /* eslint-env jest */
-import { createAdvertisement, Advertisement } from '../../utils/advertiser.js'
-import { createNonce, ECDSA, BigNumber, WalletInterface, Signature } from '@bsv/sdk'
+import { createAdvertisement } from '../../utils/advertiser.js'
+import { createNonce, ECDSA, WalletInterface, Signature } from '@bsv/sdk'
 
 // Mock the SDK functions to control their behavior.
 jest.mock('@bsv/sdk', () => {
@@ -16,7 +16,7 @@ jest.mock('@bsv/sdk', () => {
 })
 
 describe('advertiser module', () => {
-  const dummyWallet = {} as WalletInterface
+  const dummyWallet = {} as unknown as WalletInterface
 
   beforeEach(() => {
     jest.clearAllMocks()
@@ -33,15 +33,6 @@ describe('advertiser module', () => {
         version: '1.0'
       }
 
-      const expected = JSON.stringify({
-        host: 'https://example.com',
-        identityKey: 'key123',
-        nonce: 'nonceVal',
-        protocol: 'MB_AD',
-        timestamp: '2025-04-01T12:00:00Z',
-        version: '1.0'
-      })
-
       const dummySig = {
         toDER: () => 'dummySignature'
       } as unknown as Signature
@@ -49,11 +40,11 @@ describe('advertiser module', () => {
       ;(ECDSA.sign as jest.Mock).mockReturnValue(dummySig)
 
       const fixedTimestamp = '2025-04-01T12:00:00.000Z'
-      const originalDate = Date
+      const OriginalDate = Date
       global.Date = class extends Date {
         constructor () {
           super()
-          return new originalDate(fixedTimestamp)
+          return new OriginalDate(fixedTimestamp)
         }
       } as any
 
@@ -68,7 +59,7 @@ describe('advertiser module', () => {
       expect(ad.protocol).toBe('MB_AD')
       expect(ad.version).toBe('1.0')
       expect(ad.timestamp).toBe(fixedTimestamp)
-      global.Date = originalDate
+      global.Date = OriginalDate
     })
   })
 
@@ -89,9 +80,6 @@ describe('advertiser module', () => {
     })
 
     it('should convert an array signature to a hex string', async () => {
-      const dummySig = {
-        toDER: () => [1, 15, 255]
-      } as unknown as Signature
       ;(ECDSA.sign as jest.Mock).mockReturnValue({
         toDER: (enc?: 'hex' | 'base64') => enc === 'hex' ? '010fff' : [1, 15, 255]
       })
