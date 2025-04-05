@@ -1,12 +1,11 @@
 /* eslint-env jest */
-import acknowledgeMessage, { AcknowledgeRequest } from '../acknowledgeMessage'
-import * as mockKnex from 'mock-knex'
-import { AuthriteRequest } from '../../utils/testingInterfaces'
+import acknowledgeMessage, { AcknowledgeRequest } from '../acknowledgeMessage.js'
+import mockKnex, { Tracker } from 'mock-knex'
 import { Response } from 'express'
 
 // Ensure proper handling of mock-knex
 const knex = acknowledgeMessage.knex
-let queryTracker: mockKnex.Tracker
+let queryTracker: Tracker
 
 // Define Mock Express Response Object
 const mockRes: jest.Mocked<Response> = {
@@ -42,7 +41,7 @@ describe('acknowledgeMessage', () => {
       throw e
     })
 
-    queryTracker = (mockKnex as any).getTracker() as mockKnex.Tracker
+    queryTracker = (mockKnex as any).getTracker() as Tracker
     queryTracker.install()
 
     validReq = {

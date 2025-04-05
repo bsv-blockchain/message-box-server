@@ -1,12 +1,12 @@
 /* eslint-env jest */
-import listMessages from '../listMessages'
-import * as mockKnex from 'mock-knex'
+import listMessages from '../listMessages.js'
+import mockKnex, { Tracker } from 'mock-knex'
 import { Response } from 'express'
-import { AuthriteRequestMB } from '../../utils/testingInterfaces'
+import { AuthriteRequestMB } from '../../utils/testingInterfaces.js'
 
 // Ensure proper handling of mock-knex
 const knex = listMessages.knex
-let queryTracker: mockKnex.Tracker
+let queryTracker: Tracker
 
 // Define Mock Express Response Object
 const mockRes: jest.Mocked<Response> = {
@@ -46,7 +46,7 @@ describe('listMessages', () => {
       throw e
     })
 
-    queryTracker = (mockKnex as any).getTracker() as mockKnex.Tracker
+    queryTracker = (mockKnex as any).getTracker() as Tracker
     queryTracker.install()
 
     validMessages = [{

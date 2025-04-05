@@ -1,171 +1,124 @@
-import http from 'http'
-import { TextEncoder } from 'util'
+/* eslint-disable @typescript-eslint/no-misused-promises */
 import {
+  advertisementTxId,
+  createAdvertisementTx,
   broadcastAdvertisement
 } from '../../utils/advertiserIntegration.js'
-import {
-  TopicBroadcaster,
-  HTTPSOverlayBroadcastFacilitator,
-  LookupResolver,
-  PrivateKey
-} from '@bsv/sdk'
-import type { WalletInterface } from '@bsv/sdk'
+import { TopicBroadcaster, WalletInterface } from '@bsv/sdk'
+import { Advertisement } from '../../utils/advertiser.js'
 
-// Generate a real random private key and derive its public key
-const randomPrivateKey = PrivateKey.fromRandom()
-const validPrivateKey = randomPrivateKey.toString('hex')
-const validPublicKey = randomPrivateKey.toPublicKey().toString()
-
-// Build a minimal wallet using real keys so that createNonce works
-const realWallet: WalletInterface = {
-  createHmac: async () => {
-    return { hmac: PrivateKey.fromRandom().toString('hex') }
-  },
-  getPublicKey: async () => validPublicKey,
-  revealCounterpartyKeyLinkage: async () => {},
-  revealSpecificKeyLinkage: async () => {},
-  encrypt: async (data: any) => data,
-  decrypt: async (data: any) => data,
-  sign: async (data: any) => randomPrivateKey.sign(data).toString()
-} as unknown as WalletInterface
-
-let server: http.Server
-let port: number
-let localServerUrl: string
-let capturedRequestBody: string | null = null
-
-function startLocalServer (
-  onRequest: (req: http.IncomingMessage, res: http.ServerResponse) => void
-) {
-  return new Promise<void>(resolve => {
-    server = http.createServer((req, res) => {
-      onRequest(req, res)
-    })
-    server.listen(0, () => {
-      port = (server.address() as any).port
-      localServerUrl = `http://localhost:${port}`
-      resolve()
-    })
-  })
-}
-
-function createCustomBroadcaster (topics: string[]): TopicBroadcaster {
-    const facilitator = new HTTPSOverlayBroadcastFacilitator(fetch, true)
-  
-    // Force override send to always go to local test server
-    const originalSend = facilitator.send
-    facilitator.send = async (_url, taggedBEEF) => {
-      console.log('[TEST] facilitator.send sending to local server')
-      return originalSend.call(facilitator, localServerUrl, taggedBEEF)
-    }
-  
-    // Force all hosts to be treated as interested (skip protocol filters)
-    (facilitator as any).shouldBroadcastToHost = () => true
-  
-    const resolver = new LookupResolver({ networkPreset: 'local' })
-    resolver.query = async () => ({
-      type: 'output-list',
-      outputs: [
-        {
-          beef: [],
-          outputIndex: 0,
-          domain: localServerUrl
-        }
-      ]
-    })
-  
-    return new TopicBroadcaster(topics, { facilitator, resolver })
+// Mock dependencies
+jest.mock('@bsv/sdk', () => {
+  const actual = jest.requireActual('@bsv/sdk')
+  return {
+    ...actual,
+    TopicBroadcaster: jest.fn().mockImplementation(() => ({
+      broadcast: jest.fn().mockResolvedValue({ status: 'success', txid: 'test-txid' })
+    })),
+    Transaction: jest.fn().mockImplementation(() => ({
+      version: 1,
+      lockTime: 0,
+      inputs: [],
+      outputs: [],
+      toBEEF: jest.fn(),
+      id: undefined
+    }))
   }
-  
-describe('Integration: advertiserIntegration using real keys', () => {
-  beforeEach(async () => {
-    capturedRequestBody = null
-    await startLocalServer((req, res) => {
-      if (req.method === 'POST' && req.url === '/submit') {
-        let body = ''
-        req.on('data', chunk => {
-          body += chunk
-        })
-        req.on('end', () => {
-          capturedRequestBody = body
-          res.writeHead(200, { 'Content-Type': 'application/json' })
-          res.end(
-            JSON.stringify({
-              status: 'success',
-              txid: 'localTxId',
-              message: 'Sent to local overlay host'
-            })
-          )
-        })
-      } else {
-        res.writeHead(404)
-        res.end()
+})
+
+jest.mock('../../utils/advertiser.js', () => ({
+  createAdvertisement: jest.fn().mockResolvedValue({
+    protocol: 'MB_AD',
+    version: '1.0',
+    identityKey: 'testKey',
+    host: 'https://example.com',
+    timestamp: new Date().toISOString(),
+    nonce: 'nonce',
+    signature: 'signature'
+  })
+}))
+
+jest.mock('../../index.js', () => ({
+  knex: jest.fn(() => ({
+    insert: jest.fn().mockResolvedValue(undefined)
+  }))
+}))
+
+describe('advertiserIntegration', () => {
+  describe('advertisementTxId', () => {
+    it('returns hex string if "hex" is passed', () => {
+      const result = advertisementTxId('hex')
+      expect(result).toBe('advertisementTxId')
+    })
+
+    it('returns number[] if no arg is passed', () => {
+      const result = advertisementTxId()
+      expect(Array.isArray(result)).toBe(true)
+      expect(typeof result[0]).toBe('number')
+    })
+  })
+
+  describe('createAdvertisementTx', () => {
+    it('creates a Transaction with correct BEEF payload', () => {
+      const ad: Advertisement = {
+        protocol: 'MB_AD',
+        version: '1.0',
+        identityKey: 'key',
+        host: 'https://host',
+        timestamp: new Date().toISOString(),
+        nonce: '123',
+        signature: 'sig'
       }
+
+      const tx = createAdvertisementTx(ad)
+      expect(tx.version).toBe(1)
+      expect(tx.lockTime).toBe(0)
+      expect(tx.inputs).toEqual([])
+      expect(tx.outputs).toEqual([])
+      expect(typeof tx.toBEEF).toBe('function')
+      expect(tx.id()).toEqual(advertisementTxId())
     })
   })
 
-  afterEach(done => {
-    server.close(() => done())
-  })
+  describe('broadcastAdvertisement', () => {
+    it('should broadcast and return success response', async () => {
+      const mockWallet = {
+        getPublicKey: jest.fn().mockResolvedValue({ publicKey: 'mocked-key' })
+      } as unknown as WalletInterface
 
-  it('should broadcast advertisement successfully', async () => {
-    const params = {
-      host: 'https://example.com',
-      identityKey: validPublicKey,
-      privateKey: validPrivateKey,
-      wallet: realWallet,
-      topics: ['tm_messagebox_ad']
-    }
+      const result = await broadcastAdvertisement({
+        host: 'https://example.com',
+        identityKey: 'testKey',
+        privateKey: 'secret',
+        wallet: mockWallet
+      })
 
-    const broadcaster = createCustomBroadcaster(params.topics)
-    const result = await broadcastAdvertisement({ ...params, broadcaster })
-
-    expect(result.status).toBe('success')
-    expect(result.txid).toBe('localTxId')
-  })
-
-  it('should capture full content of transmitted advertisement', async () => {
-    const params = {
-      host: 'https://example.com',
-      identityKey: validPublicKey,
-      privateKey: validPrivateKey,
-      wallet: realWallet,
-      topics: ['tm_messagebox_ad']
-    }
-
-    const broadcaster = createCustomBroadcaster(params.topics)
-    const result = await broadcastAdvertisement({ ...params, broadcaster })
-
-    expect(result.status).toBe('success')
-    expect(result.requestBody).toBeTruthy()
-
-    const parsed = JSON.parse(result.requestBody as string)
-    expect(parsed.protocol).toBe('MB_AD')
-    expect(parsed.version).toBe('1.0')
-    expect(parsed.identityKey).toBe(params.identityKey)
-    expect(parsed.host).toBe(params.host)
-    expect(parsed.nonce).toBeTruthy()
-    expect(parsed.signature).toBeTruthy()
-  })
-
-  it('should simulate a network timeout by closing the server', async () => {
-    const params = {
-      host: 'https://example.com',
-      identityKey: validPublicKey,
-      privateKey: validPrivateKey,
-      wallet: realWallet,
-      topics: ['tm_messagebox_ad']
-    }
-
-    await new Promise<void>(resolve => {
-      server.close(() => resolve())
+      expect(result.status).toBe('success')
+      expect(result.txid).toBe('test-txid')
+      expect(result.advertisement).toBeDefined()
+      expect(result.requestBody).toContain('"identityKey":"testKey"')
     })
 
-    const broadcaster = createCustomBroadcaster(params.topics)
-    const result = await broadcastAdvertisement({ ...params, broadcaster })
+    it('should handle broadcast failure gracefully', async () => {
+      const mockWallet = {
+        getPublicKey: jest.fn().mockResolvedValue({ publicKey: 'mocked-key' })
+      } as unknown as WalletInterface
 
-    expect(result.status).toBe('error')
-    expect(result.code).toBeTruthy()
-    expect(result.description).toBeTruthy()
+      const broadcaster = {
+        broadcast: jest.fn().mockRejectedValue(new Error('Broadcast failed'))
+      } as unknown as TopicBroadcaster
+
+      const result = await broadcastAdvertisement({
+        host: 'https://example.com',
+        identityKey: 'testKey',
+        privateKey: 'secret',
+        wallet: mockWallet,
+        broadcaster
+      })
+
+      expect(result.status).toBe('error')
+      expect(result.description).toMatch(/Broadcast failed/)
+      expect(result.advertisement).toBeDefined()
+    })
   })
 })

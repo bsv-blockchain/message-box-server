@@ -1,5 +1,5 @@
 /* eslint-env jest */
-import { createAdvertisement, Advertisement } from '../../utils/advertiser'
+import { createAdvertisement, Advertisement } from '../../utils/advertiser.js'
 import { createNonce, ECDSA, BigNumber, WalletInterface, Signature } from '@bsv/sdk'
 
 // Mock the SDK functions to control their behavior.
@@ -94,7 +94,7 @@ describe('advertiser module', () => {
       } as unknown as Signature
       ;(ECDSA.sign as jest.Mock).mockReturnValue({
         toDER: (enc?: 'hex' | 'base64') => enc === 'hex' ? '010fff' : [1, 15, 255]
-      })      
+      })
       const ad = await createAdvertisement({
         host: 'https://example.com',
         identityKey: 'key123',
@@ -108,7 +108,7 @@ describe('advertiser module', () => {
     it('should throw an error if ECDSA.sign returns an unexpected type', async () => {
       ;(ECDSA.sign as jest.Mock).mockReturnValue({
         toDER: () => 12345 // Not a string or array
-      })      
+      })
       await expect(
         createAdvertisement({
           host: 'https://example.com',
