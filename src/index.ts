@@ -1,51 +1,27 @@
 import * as dotenv from 'dotenv'
-import express, { Express, Request as ExpressRequest, Response, NextFunction, RequestHandler } from 'express'
-import bodyParser from 'body-parser'
-import { preAuth, postAuth } from './routes/index.js'
+import { app, appReady, getWallet, knex } from './app.js'
 import { spawn } from 'child_process'
 import { createServer } from 'http'
-import { createAuthMiddleware } from '@bsv/auth-express-middleware'
-import { PublicKey, WalletInterface } from '@bsv/sdk'
+import { PublicKey } from '@bsv/sdk'
 import { webcrypto } from 'crypto'
-import knexLib, { Knex } from 'knex'
-import knexConfig from '../knexfile.js'
-import { Setup } from '@bsv/wallet-toolbox'
-import sendMessageRoute from './routes/sendMessage.js'
 import { Logger } from './utils/logger.js'
-import { broadcastAdvertisement } from './utils/advertiserIntegration.js'
-import overlayRoutes from './routes/overlayRoutes.js'
 import { AuthSocketServer } from '@bsv/authsocket'
 
 (global as any).self = { crypto: webcrypto }
 
 dotenv.config()
 
-const app: Express = express()
-
 const {
   NODE_ENV = 'development',
   PORT,
   SERVER_PRIVATE_KEY,
   ENABLE_WEBSOCKETS = 'true',
-  ROUTING_PREFIX = '',
-  WALLET_STORAGE_URL
+  ROUTING_PREFIX = ''
 } = process.env
 
 if (NODE_ENV === 'development' || process.env.LOGGING_ENABLED === 'true') {
   Logger.enable()
 }
-
-const knex: Knex = (knexLib as any).default?.(
-  NODE_ENV === 'production' || NODE_ENV === 'staging'
-    ? knexConfig.production
-    : knexConfig.development
-) ?? (knexLib as any)(
-  NODE_ENV === 'production' || NODE_ENV === 'staging'
-    ? knexConfig.production
-    : knexConfig.development
-)
-
-export { knex }
 
 // Ensure PORT is properly handled
 const parsedPort = Number(PORT)
@@ -64,39 +40,6 @@ if (SERVER_PRIVATE_KEY === undefined || SERVER_PRIVATE_KEY === null || SERVER_PR
   throw new Error('SERVER_PRIVATE_KEY is not defined in the environment variables.')
 }
 
-// This allows the API to be used everywhere when CORS is enforced
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*')
-  res.header('Access-Control-Allow-Headers', '*')
-  res.header('Access-Control-Allow-Methods', '*')
-  res.header('Access-Control-Expose-Headers', '*')
-  res.header('Access-Control-Allow-Private-Network', 'true')
-
-  if (req.method === 'OPTIONS') {
-    // Handle CORS preflight requests to allow cross-origin POST/PUT requests
-    res.sendStatus(200)
-  } else {
-    next()
-  }
-})
-
-let _wallet: WalletInterface | undefined
-
-export const walletReady = (async () => {
-  _wallet = await Setup.createWalletClientNoEnv({
-    chain: 'main',
-    rootKeyHex: SERVER_PRIVATE_KEY,
-    storageUrl: WALLET_STORAGE_URL
-  })
-})()
-
-export function getWallet (): WalletInterface {
-  if (_wallet === null || _wallet === undefined) {
-    throw new Error('Wallet has not been initialized yet.')
-  }
-  return _wallet
-}
-
 // Create HTTP server
 /* eslint-disable @typescript-eslint/no-misused-promises */
 const http = createServer(app)
@@ -104,12 +47,13 @@ const http = createServer(app)
 // WebSocket setup (only if enabled)
 let io: AuthSocketServer | null = null
 
-;(async () => {
-  await walletReady
+export const start = async (): Promise<void> => {
+  await appReady
+
   if (ENABLE_WEBSOCKETS.toLowerCase() === 'true') {
     Logger.log('[WEBSOCKET] Initializing WebSocket support...')
     io = new AuthSocketServer(http, {
-      wallet: getWallet(),
+      wallet: await getWallet(),
       cors: {
         origin: '*',
         methods: ['GET', 'POST']
@@ -347,68 +291,9 @@ let io: AuthSocketServer | null = null
       })
     })
   }
-})().catch(error => {
-  Logger.error('[WEBSOCKET INIT ERROR]', error)
-})
-
-// Configure JSON body parser
-app.use(bodyParser.json({ limit: '1gb', type: 'application/json' }))
-
-export { io, http, HTTP_PORT, ROUTING_PREFIX }
-
-// Define Authenticated Request Type
-interface AuthenticatedRequest extends ExpressRequest {
-  auth?: { identityKey: string }
 }
 
-// Log authentication **before** running auth middleware
-app.use((req: ExpressRequest, res: Response, next: NextFunction): void => {
-  Logger.log('[DEBUG] Incoming Request:', req.method, req.url)
-  Logger.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
-  Logger.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2))
-
-  if (req.headers['x-bsv-auth-identity-key'] == null) {
-    Logger.warn('[WARNING] Missing x-bsv-auth-identity-key in headers')
-  }
-
-  next()
-})
-
-const authMiddleware = createAuthMiddleware({
-  wallet: getWallet(),
-  allowUnauthenticated: false,
-  logger: console,
-  logLevel: 'debug'
-})
-
-// Serve Static Files
-app.use(express.static('public'))
-
-// Pre-Auth Routes
-preAuth.forEach((route) => {
-  app[route.type as 'get' | 'post' | 'put' | 'delete'](
-    `${String(ROUTING_PREFIX)}${String(route.path)}`,
-    route.func as unknown as (req: ExpressRequest, res: Response, next: NextFunction) => void
-  )
-})
-
-// Apply authentication middleware
-app.use(authMiddleware)
-
-// Log authentication **after** auth middleware runs
-app.use((req: ExpressRequest, res: Response, next: NextFunction): void => {
-  const authRequest = req as unknown as AuthenticatedRequest
-  Logger.log('[DEBUG] After Authentication Middleware:', req.url)
-  Logger.log('[DEBUG] Authenticated User Identity:', authRequest.auth?.identityKey ?? 'Not Provided')
-
-  if (authRequest.auth?.identityKey == null) {
-    Logger.warn('[WARNING] AuthMiddleware did not set req.auth correctly!')
-  } else {
-    Logger.log('[DEBUG] Authentication Successful:', authRequest.auth.identityKey)
-  }
-
-  next()
-})
+export { io, http, HTTP_PORT, ROUTING_PREFIX }
 
 // const paymentMiddleware = createPaymentMiddleware({
 //   wallet,
@@ -428,86 +313,83 @@ app.use((req: ExpressRequest, res: Response, next: NextFunction): void => {
 //   }
 // })
 
-// Post-Auth Routes
-postAuth.forEach((route) => {
-  const loggingMiddleware: RequestHandler = (req, res, next) => {
-    Logger.log('[DEBUG] Authenticated Request to:', req.url)
-    Logger.log('[DEBUG] User Identity:', req.body.identityKey ?? 'Not Provided')
-    next()
-  }
-
-  if (route.path === '/sendMessage') {
-    app[route.type as 'get' | 'post' | 'put' | 'delete'](
-      `${String(ROUTING_PREFIX)}${String(route.path)}`,
-      loggingMiddleware,
-      // paymentMiddleware, // Apply payment middleware specifically for /sendMessage
-      sendMessageRoute.func as unknown as RequestHandler
-    )
-  } else {
-    app[route.type as 'get' | 'post' | 'put' | 'delete'](
-      `${String(ROUTING_PREFIX)}${String(route.path)}`,
-      loggingMiddleware,
-      route.func as RequestHandler
-    )
-  }
-})
-
-app.use('/overlay', overlayRoutes)
-
-// 404 Route Not Found Handler
-app.use((req: ExpressRequest, res: Response) => {
-  Logger.log('404', req.url)
-  res.status(404).json({
-    status: 'error',
-    code: 'ERR_ROUTE_NOT_FOUND',
-    description: 'Route not found.'
-  })
-})
-
 // Start API Server
-http.listen(HTTP_PORT, () => {
-  Logger.log('MessageBox listening on port', HTTP_PORT)
-  if (NODE_ENV !== 'development' && process.env.SKIP_NGINX !== 'true') {
-    spawn('nginx', [], { stdio: ['inherit', 'inherit', 'inherit'] })
-  }
+// http.listen(HTTP_PORT, () => {
+//   Logger.log('MessageBox listening on port', HTTP_PORT)
+//   if (
+//     NODE_ENV !== 'development' &&
+//     process.env.SKIP_NGINX !== 'true' &&
+//     process.env.NODE_ENV !== 'test'
+//   ) {
+//     spawn('nginx', [], { stdio: ['inherit', 'inherit', 'inherit'] })
+//   }
 
-  (async () => {
-    await delay(8000)
-    await knex.migrate.latest()
+//   (async () => {
+//     await delay(8000)
+//     await knex.migrate.latest()
 
-    try {
-      Logger.log('[ADVERTISER] Broadcasting advertisement on startup...')
-      const _wallet = getWallet()
+//     try {
+//       Logger.log('[ADVERTISER] Broadcasting advertisement on startup...')
+//       const _wallet = await getWallet()
 
-      const result = await broadcastAdvertisement({
-        host: process.env.ADVERTISEMENT_HOST ?? `http://localhost:${HTTP_PORT}`,
-        identityKey: (await _wallet.getPublicKey({ identityKey: true })).publicKey,
-        privateKey: SERVER_PRIVATE_KEY,
-        wallet: _wallet
-      })
+//       const result = await broadcastAdvertisement({
+//         host: process.env.ADVERTISEMENT_HOST ?? `http://localhost:${HTTP_PORT}`,
+//         identityKey: (await _wallet.getPublicKey({ identityKey: true })).publicKey,
+//         privateKey: SERVER_PRIVATE_KEY,
+//         wallet: _wallet
+//       })
 
-      Logger.log('[ADVERTISER] Broadcast result:', result)
-    } catch (error) {
-      Logger.error('[ADVERTISER ERROR] Failed to broadcast on startup:', error)
-    }
+//       Logger.log('[ADVERTISER] Broadcast result:', result)
+//     } catch (error) {
+//       Logger.error('[ADVERTISER ERROR] Failed to broadcast on startup:', error)
+//     }
 
-    // Optional: Periodic rebroadcast every 5 minutes
-    // setInterval(async () => {
-    //   try {
-    //     Logger.log('[ADVERTISER] Periodic rebroadcast starting...')
-    //     const rebroadcast = await broadcastAdvertisement({
-    //       host: process.env.ADVERTISEMENT_HOST ?? `http://localhost:${HTTP_PORT}`,
-    //       identityKey: (await wallet.getPublicKey({ identityKey: true })).publicKey,
-    //       privateKey: SERVER_PRIVATE_KEY,
-    //       wallet
-    //     })
-    //     Logger.log('[ADVERTISER] Periodic rebroadcast result:', rebroadcast)
-    //   } catch (error) {
-    //     Logger.error('[ADVERTISER ERROR] Periodic rebroadcast failed:', error)
-    //   }
-    // }, 5 * 60 * 1000) // 5 minutes
-  })().catch((error) => { Logger.error(error) })
-})
+// Optional: Periodic rebroadcast every 5 minutes
+// setInterval(async () => {
+//   try {
+//     Logger.log('[ADVERTISER] Periodic rebroadcast starting...')
+//     const rebroadcast = await broadcastAdvertisement({
+//       host: process.env.ADVERTISEMENT_HOST ?? `http://localhost:${HTTP_PORT}`,
+//       identityKey: (await wallet.getPublicKey({ identityKey: true })).publicKey,
+//       privateKey: SERVER_PRIVATE_KEY,
+//       wallet
+//     })
+//     Logger.log('[ADVERTISER] Periodic rebroadcast result:', rebroadcast)
+//   } catch (error) {
+//     Logger.error('[ADVERTISER ERROR] Periodic rebroadcast failed:', error)
+//   }
+// }, 5 * 60 * 1000) // 5 minutes
+//   })().catch((error) => { Logger.error(error) })
+// })
 
 const delay = async (ms: number): Promise<void> =>
   await new Promise(resolve => setTimeout(resolve, ms))
+
+// Prevent server + migrations from running in tests
+if (NODE_ENV !== 'test') {
+  http.listen(HTTP_PORT, () => {
+    Logger.log('MessageBox listening on port', HTTP_PORT)
+
+    if (
+      NODE_ENV !== 'development' &&
+      process.env.SKIP_NGINX !== 'true'
+    ) {
+      spawn('nginx', [], { stdio: ['inherit', 'inherit', 'inherit'] })
+    }
+
+    ;(async () => {
+      await delay(8000)
+      await knex.migrate.latest()
+
+      // ✨ (Optional) Future overlay service initialization could go here:
+      // const overlay = createOverlayService(mongoDb)
+      // await overlay.broadcastMyself()
+    })().catch((error) => {
+      Logger.error('[STARTUP ERROR]', error)
+    })
+  })
+
+  start().catch(error => {
+    Logger.error('[SERVER INIT ERROR]', error)
+  })
+}

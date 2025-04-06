@@ -5,7 +5,7 @@ import { TextEncoder } from 'util'
 
 // IMPORTANT: If you're using the same knex instance from index.ts,
 // you can import it directly from there (recommended):
-import { knex as globalKnex } from '../index.js'
+import { knex as globalKnex } from '../app.js'
 
 export function advertisementTxId (): number[]
 export function advertisementTxId (enc: 'hex'): string
@@ -29,7 +29,7 @@ export function createAdvertisementTx (ad: Advertisement): Transaction {
     const encoded = new TextEncoder().encode(adJSON)
     console.log('[createAdvertisementTx] toBEEF encoded JSON:', adJSON)
     console.log('[createAdvertisementTx] toBEEF Uint8Array:', encoded)
-    return Array.from(encoded) // Converts Uint8Array to number[]
+    return Array.from(encoded)
   }
 
   tx.id = advertisementTxId
@@ -43,14 +43,12 @@ export function createAdvertisementTx (ad: Advertisement): Transaction {
 export async function broadcastAdvertisement ({
   host,
   identityKey,
-  privateKey,
   wallet,
   topics = ['tm_messagebox_ad'],
   broadcaster
 }: {
   host: string
   identityKey: string
-  privateKey: string
   wallet: WalletInterface
   topics?: string[]
   broadcaster?: TopicBroadcaster
@@ -67,7 +65,6 @@ export async function broadcastAdvertisement ({
   const advertisement = await createAdvertisement({
     host,
     identityKey,
-    privateKey,
     wallet
   })
 

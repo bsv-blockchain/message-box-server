@@ -2,6 +2,8 @@ import { Request, Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
 import { Logger } from '../utils/logger.js'
+import { MessageBoxLookupService } from '../overlay/services/MessageBoxLookupService.js'
+import { MessageBoxStorage } from '../overlay/services/MessageBoxStorage.js'
 
 const { NODE_ENV = 'development' } = process.env
 
@@ -35,8 +37,9 @@ export default {
   func: async (req: AcknowledgeRequest, res: Response): Promise<Response> => {
     try {
       const { messageIds } = req.body
+      const identityKey = req.auth.identityKey
 
-      Logger.log('[SERVER] acknowledgeMessage called for messageIds:', messageIds, 'by', req.auth.identityKey)
+      Logger.log('[SERVER] acknowledgeMessage called for messageIds:', messageIds, 'by', identityKey)
 
       // Validate request body
       if ((messageIds == null) || (Array.isArray(messageIds) && messageIds.length === 0)) {
@@ -55,27 +58,33 @@ export default {
         })
       }
 
-      // The server removes the message after it has been acknowledged
+      // Attempt local delete
       const deleted = await knex('messages')
-        .where({ recipient: req.auth.identityKey })
-        .whereIn('messageId', Array.isArray(messageIds) ? messageIds : [messageIds])
+        .where({ recipient: identityKey })
+        .whereIn('messageId', messageIds)
         .del()
 
-      if (deleted === 0) {
-        return res.status(400).json({
-          status: 'error',
-          code: 'ERR_INVALID_ACKNOWLEDGMENT',
-          description: 'Message not found!'
-        })
+      if (deleted > 0) {
+        return res.status(200).json({ status: 'success', source: 'local' })
       }
 
-      if (deleted < 0) {
-        throw new Error('Deletion failed')
+      // If not found locally, try overlay
+      Logger.log('[OVERLAY] No local messages acknowledged. Trying overlay...')
+      const overlayService = new MessageBoxLookupService(new MessageBoxStorage(knex))
+
+      const result = await overlayService.acknowledgeMessages(identityKey, messageIds)
+
+      if (result?.acknowledged === true) {
+        return res.status(200).json({ status: 'success', source: 'overlay' })
       }
 
-      return res.status(200).json({ status: 'success' })
+      return res.status(400).json({
+        status: 'error',
+        code: 'ERR_INVALID_ACKNOWLEDGMENT',
+        description: 'Message not found locally or remotely!'
+      })
     } catch (e) {
-      Logger.error(e)
+      Logger.error('[acknowledgeMessage ERROR]', e)
       return res.status(500).json({
         status: 'error',
         code: 'ERR_INTERNAL_ERROR',

@@ -93,7 +93,7 @@ describe('overlayRoutes', () => {
   })
 
   it('GET /overlay/ads should handle DB error', async () => {
-    const { knex } = await import('../../index.js')
+    const { knex } = await import('../../app.js')
 
     const mockQueryBuilder = {
       orderBy: jest.fn().mockReturnThis(),

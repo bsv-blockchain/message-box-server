@@ -89,7 +89,6 @@ describe('advertiserIntegration', () => {
       const result = await broadcastAdvertisement({
         host: 'https://example.com',
         identityKey: 'testKey',
-        privateKey: 'secret',
         wallet: mockWallet
       })
 
@@ -111,7 +110,6 @@ describe('advertiserIntegration', () => {
       const result = await broadcastAdvertisement({
         host: 'https://example.com',
         identityKey: 'testKey',
-        privateKey: 'secret',
         wallet: mockWallet,
         broadcaster
       })

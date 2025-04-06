@@ -51,7 +51,6 @@ describe('advertiser module', () => {
       const ad = await createAdvertisement({
         host: adData.host,
         identityKey: adData.identityKey,
-        privateKey: 'def456',
         nonce: adData.nonce,
         wallet: dummyWallet
       })
@@ -72,7 +71,6 @@ describe('advertiser module', () => {
       const result = await createAdvertisement({
         host: 'https://example.com',
         identityKey: 'key123',
-        privateKey: 'abcdef',
         nonce: 'providedNonce',
         wallet: dummyWallet
       })
@@ -86,7 +84,6 @@ describe('advertiser module', () => {
       const ad = await createAdvertisement({
         host: 'https://example.com',
         identityKey: 'key123',
-        privateKey: 'abcdef',
         nonce: 'providedNonce',
         wallet: dummyWallet
       })
@@ -101,7 +98,6 @@ describe('advertiser module', () => {
         createAdvertisement({
           host: 'https://example.com',
           identityKey: 'key123',
-          privateKey: 'abcdef',
           nonce: 'providedNonce',
           wallet: dummyWallet
         })
@@ -117,7 +113,6 @@ describe('advertiser module', () => {
       const ad = await createAdvertisement({
         host: 'https://example.com',
         identityKey: 'key123',
-        privateKey: 'abcdef',
         nonce: 'providedNonce',
         wallet: dummyWallet
       })
@@ -133,7 +128,6 @@ describe('advertiser module', () => {
       const ad = await createAdvertisement({
         host: 'https://example.com',
         identityKey: 'key123',
-        privateKey: 'abcdef',
         nonce: '  ',
         wallet: dummyWallet
       })
@@ -150,7 +144,6 @@ describe('advertiser module', () => {
       const ad = await createAdvertisement({
         host: 'https://example.com',
         identityKey: 'key123',
-        privateKey: 'abcdef',
         nonce: 'providedNonce',
         wallet: dummyWallet
       })

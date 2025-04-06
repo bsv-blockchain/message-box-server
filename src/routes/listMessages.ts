@@ -1,6 +1,9 @@
 import { Request, Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
+import { MessageBoxLookupService } from '../overlay/services/MessageBoxLookupService.js'
+import { MessageBoxStorage } from '../overlay/services/MessageBoxStorage.js'
+import { Logger } from '../utils/logger.js'
 
 const { NODE_ENV = 'development' } = process.env
 
@@ -40,55 +43,63 @@ export default {
   func: async (req: ListMessagesRequest, res: Response): Promise<Response> => {
     try {
       const { messageBox } = req.body
+      const identityKey = req.auth.identityKey
 
-      // Validate a messageBox is provided and is a string
-      if (messageBox == null || messageBox === '') {
+      if (typeof messageBox !== 'string' || messageBox.trim() === '') {
         return res.status(400).json({
           status: 'error',
-          code: 'ERR_MESSAGEBOX_REQUIRED',
+          code: 'ERR_INVALID_MESSAGEBOX',
           description: 'Please provide the name of a valid MessageBox!'
         })
       }
 
-      if (typeof messageBox !== 'string') {
-        return res.status(400).json({
-          status: 'error',
-          code: 'ERR_INVALID_MESSAGEBOX',
-          description: 'MessageBox name must be a string!'
-        })
-      }
-
-      // Get the ID of the messageBox
+      // Check for a local messageBox
       const [messageBoxRecord] = await knex('messageBox')
         .where({
-          identityKey: req.auth.identityKey,
+          identityKey,
           type: messageBox
         })
         .select('messageBoxId')
 
-      // Validate a match was found
-      if (messageBoxRecord === undefined) {
+      if (messageBoxRecord !== undefined) {
+        // Local messageBox found — return messages
+        const messages = await knex('messages')
+          .where({
+            recipient: identityKey,
+            messageBoxId: messageBoxRecord.messageBoxId
+          })
+          .select('messageId', 'body', 'sender', 'created_at', 'updated_at')
+
         return res.status(200).json({
           status: 'success',
-          messages: []
+          source: 'local',
+          messages
         })
       }
 
-      // Get all messages from the specified messageBox
-      const messages = await knex('messages')
-        .where({
-          recipient: req.auth.identityKey,
-          messageBoxId: messageBoxRecord.messageBoxId
-        })
-        .select('messageId', 'body', 'sender', 'created_at', 'updated_at')
+      // No local messageBox — check the overlay
+      Logger.log(`[OVERLAY] No local messageBox found for ${identityKey}. Checking overlay...`)
 
-      // Return a list of matching messages
+      const overlayService = new MessageBoxLookupService(new MessageBoxStorage(knex))
+      const remoteMessages = await overlayService.listMessages(identityKey, messageBox)
+
+      if (remoteMessages != null) {
+        Logger.log(`[OVERLAY] Retrieved ${Array.isArray(remoteMessages) ? remoteMessages.length : 0} messages from remote host.`)
+        return res.status(200).json({
+          status: 'success',
+          source: 'overlay',
+          messages: remoteMessages
+        })
+      }
+
+      Logger.warn(`[OVERLAY] No remote messageBox found or host unreachable for ${identityKey}.`)
       return res.status(200).json({
         status: 'success',
-        messages
+        source: 'none',
+        messages: []
       })
     } catch (e) {
-      console.error(e)
+      Logger.error('[listMessages ERROR]', e)
       return res.status(500).json({
         status: 'error',
         code: 'ERR_INTERNAL_ERROR',
