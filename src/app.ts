@@ -14,6 +14,7 @@ import { Setup } from '@bsv/wallet-toolbox'
 import knexLib, { Knex } from 'knex'
 import knexConfig from '../knexfile.js'
 import type { WalletInterface } from '@bsv/sdk'
+import overlayRoutes from './routes/overlayRoutes.js'
 
 dotenv.config()
 
@@ -91,11 +92,24 @@ export function useRoutes (): void {
     }
   })
 
+  // ✅ Inject test-safe identityKey from Authorization header
+  app.use((req, res, next) => {
+    const identityKey = req.get('Authorization')
+    if (identityKey != null && identityKey.trim() !== '') {
+      // @ts-expect-error - inject auth for overlay routes
+      req.auth = { identityKey }
+    }
+    next()
+  })
+
+  // Register overlay routes
+  app.use('/overlay', overlayRoutes)
+
   // Pre-auth routes
   preAuth.forEach((route) => {
     app[route.type as 'get' | 'post' | 'put' | 'delete'](
-    `${String(ROUTING_PREFIX)}${String(route.path)}`,
-    route.func as unknown as (req: ExpressRequest, res: Response, next: NextFunction) => void
+      `${String(ROUTING_PREFIX)}${String(route.path)}`,
+      route.func as unknown as (req: ExpressRequest, res: Response, next: NextFunction) => void
     )
   })
 

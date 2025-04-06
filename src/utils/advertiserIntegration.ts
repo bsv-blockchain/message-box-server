@@ -76,7 +76,7 @@ export async function broadcastAdvertisement ({
   // Store the advertisement in the database
   try {
     await globalKnex('overlay_ads').insert({
-      identityKey: advertisement.identityKey,
+      identity_key: advertisement.identityKey,
       host: advertisement.host,
       nonce: advertisement.nonce,
       signature: advertisement.signature,

@@ -71,9 +71,9 @@ export default {
 
   func: async (req: SendMessageRequest, res: Response): Promise<Response> => {
     try {
-      // Logger.log('[DEBUG] Processing /sendMessage request...')
-      // Logger.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
-      // Logger.log('[DEBUG] Request Body:', JSON.stringify(req.body ?? {}, null, 2))
+      Logger.log('[DEBUG] Processing /sendMessage request...')
+      Logger.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
+      Logger.log('[DEBUG] Request Body:', JSON.stringify(req.body ?? {}, null, 2))
       const { message } = req.body // Ensure message is extracted properly
       if (message == null) {
         Logger.error('[ERROR] No message provided in request body!')
