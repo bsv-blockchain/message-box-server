@@ -6,17 +6,19 @@ export interface AuthenticatedRequest extends Request {
   }
 }
 
-/**
- * Advertisement structure — published by a host on behalf of an identityKey.
- */
-export interface Advertisement {
+export interface AdvertisementBase {
   identityKey: string
   host: string
-  timestamp: number
+  timestamp: string | Date
   nonce: string
   signature: string
+}
+
+// What’s broadcasted over the wire (includes protocol/version)
+export interface Advertisement extends AdvertisementBase {
+  protocol: string
+  version: string
   txid?: string
-  created_at?: Date // stored in DB, not needed in broadcast payload
 }
 
 /**
@@ -43,7 +45,7 @@ export interface ForwardResult {
 export interface OverlayAdRow {
   identity_key: string
   host: string
-  timestamp: number
+  timestamp: string
   nonce: string
   signature: string
   txid: string

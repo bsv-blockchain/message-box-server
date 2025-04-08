@@ -70,10 +70,11 @@ export class MessageBoxLookupService implements MessageBoxLookupServiceContract 
 
     try {
       const response = await axios.post(`${host}/sendMessage`, {
+        sender,
         message
       }, {
         headers: {
-          Authorization: sender // TODO: Replace with proper signed identity header
+          Authorization: sender
         }
       })
 

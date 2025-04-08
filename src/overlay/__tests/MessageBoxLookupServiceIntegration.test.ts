@@ -1,6 +1,6 @@
-import { MessageBoxLookupService } from '../MessageBoxLookupService.js'
-import { MessageBoxStorage } from '../MessageBoxStorage.js'
-import { knex, getWallet } from '../../../app.js'
+import { MessageBoxLookupService } from '../services/MessageBoxLookupService.js'
+import { MessageBoxStorage } from '../services/MessageBoxStorage.js'
+import { knex, getWallet } from '../../app.js'
 import http from 'http'
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals'
 
@@ -12,47 +12,77 @@ const TEST_HOST = 'http://localhost:4567'
 
 describe('MessageBoxLookupService (Integration)', () => {
   beforeAll(async () => {
-    // Set up test wallet + identity
     const wallet = await getWallet()
     identityKey = (await wallet.getPublicKey({ identityKey: true })).publicKey
 
-    // Clean up previous ads
     await knex('overlay_ads').where({ identity_key: identityKey }).del()
-
-    // Insert a test advertisement
     await knex('overlay_ads').insert({
       identity_key: identityKey,
       host: TEST_HOST,
-      timestamp: Math.floor(Date.now() / 1000),
+      timestamp: new Date(),
       nonce: 'test-nonce',
       signature: 'test-signature',
       txid: 'test-txid',
       created_at: new Date()
     })
 
-    // Spin up a basic HTTP server to act as the overlay recipient
     testServer = http.createServer((req, res) => {
-      if (req.method === 'POST' && req.url === '/overlay/relay') {
-        let body = ''
-        req.on('data', chunk => { body += chunk })
-        req.on('end', () => {
+      let body = ''
+      req.on('data', (chunk: Buffer) => {
+        body += chunk.toString()
+      })
+
+      req.on('end', () => {
+        try {
           receivedBody = JSON.parse(body)
+        } catch {}
+
+        res.setHeader('Content-Type', 'application/json')
+
+        if (req.url === '/sendMessage') {
           res.writeHead(200, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ status: 'received', messageId: receivedBody?.message?.messageId }))
-        })
-      } else {
-        res.writeHead(404)
-        res.end()
-      }
+
+          // Confirm sender is included and preserve it
+          receivedBody = {
+            sender: receivedBody?.sender,
+            message: receivedBody?.message
+          }
+
+          res.end(JSON.stringify({ status: 'success' }))
+        } else if (req.url === '/listMessages') {
+          res.writeHead(200)
+          res.end(JSON.stringify({
+            status: 'success',
+            messages: [{ messageId: 'm1', body: 'hi', sender: 'senderKey' }]
+          }))
+        } else if (req.url === '/acknowledgeMessage') {
+          res.writeHead(200)
+          res.end(JSON.stringify({
+            status: 'success',
+            acknowledged: true
+          }))
+        } else {
+          res.writeHead(404)
+          res.end()
+        }
+      })
     })
 
-    await new Promise(resolve => testServer.listen(4567, resolve))
+    await new Promise<void>(resolve => testServer.listen(4567, resolve))
   })
 
   afterAll(async () => {
     await knex('overlay_ads').where({ identity_key: identityKey }).del()
-    await knex.destroy()
-    await new Promise(resolve => testServer.close(resolve))
+
+    await new Promise<void>((resolve, reject) => {
+      testServer.close((err?: Error | null) => {
+        if (err != null) {
+          reject(err)
+        } else {
+          resolve()
+        }
+      })
+    })
   })
 
   it('should forward a message using a recent advertisement', async () => {
@@ -70,11 +100,7 @@ describe('MessageBoxLookupService (Integration)', () => {
 
     expect(result).toMatchObject({
       forwarded: true,
-      host: TEST_HOST,
-      response: {
-        status: 'received',
-        messageId: 'test-msg-id'
-      }
+      host: TEST_HOST
     })
 
     expect(receivedBody).toMatchObject({
@@ -86,5 +112,23 @@ describe('MessageBoxLookupService (Integration)', () => {
         body: 'Integration test message'
       }
     })
+  })
+
+  it('should list messages via overlay using recent advertisement', async () => {
+    const service = new MessageBoxLookupService(new MessageBoxStorage(knex))
+    const messages = await service.listMessages(identityKey, 'testbox')
+    expect(Array.isArray(messages)).toBe(true)
+    expect(messages?.[0]).toMatchObject({ messageId: 'm1', body: 'hi', sender: 'senderKey' })
+  })
+
+  it('should acknowledge messages via overlay using recent advertisement', async () => {
+    const service = new MessageBoxLookupService(new MessageBoxStorage(knex))
+    const result = await service.acknowledgeMessages(identityKey, ['msg-123', 'msg-456'])
+
+    expect(receivedBody).toMatchObject({
+      messageIds: ['msg-123', 'msg-456']
+    })
+
+    expect(result).toMatchObject({ acknowledged: true })
   })
 })

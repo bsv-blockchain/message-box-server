@@ -11,7 +11,7 @@ export interface Message {
 export interface Advertisement {
   identityKey: string
   host: string
-  timestamp: number
+  timestamp: string | Date
   nonce: string
   signature: string
   txid?: string

@@ -108,7 +108,10 @@ describe('MessageBoxLookupService', () => {
 
       expect(mockedAxios.post).toHaveBeenCalledWith(
         'http://host/sendMessage',
-        { message },
+        {
+          sender: message.sender,
+          message
+        },
         expect.objectContaining({ headers: { Authorization: message.sender } })
       )
       expect(result).toEqual({ forwarded: true, host: 'http://host' })

@@ -16,7 +16,7 @@ export class MessageBoxStorage {
   async storeAdvertisement (ad: {
     identityKey: string
     host: string
-    timestamp: number
+    timestamp: string | Date
     nonce: string
     signature: string
     txid?: string
@@ -28,7 +28,7 @@ export class MessageBoxStorage {
     await this.knex('overlay_ads').insert({
       identity_key: ad.identityKey,
       host: ad.host,
-      timestamp: ad.timestamp,
+      timestamp: new Date(ad.timestamp),
       nonce: ad.nonce,
       signature: ad.signature,
       txid: ad.txid,
@@ -41,15 +41,16 @@ export class MessageBoxStorage {
       .orderBy('created_at', 'desc')
       .limit(limit)
 
-    // Convert snake_case → camelCase
     return rows.map(row => ({
       identityKey: row.identity_key,
       host: row.host,
-      timestamp: row.timestamp,
+      timestamp: row.timestamp.toString(),
       nonce: row.nonce,
       signature: row.signature,
       txid: row.txid,
-      created_at: row.created_at
+      created_at: row.created_at,
+      protocol: 'MB_AD',
+      version: '1.0'
     }))
   }
 }

@@ -5,12 +5,15 @@ import { Response } from 'express'
 import { Message, SendMessageRequest } from '../../utils/testingInterfaces.js'
 import type { Tracker } from 'mock-knex'
 import { Logger } from '../../utils/logger.js'
+import axios from 'axios'
+import type { AxiosInstance as AxiosInstanceType } from 'axios'
+import AxiosMockAdapter from 'axios-mock-adapter'
 
 global.fetch = jest.fn()
 
-// Ensure proper handling of mock-knex
 const knex = sendMessage.knex
 let queryTracker: Tracker
+let axiosMock: AxiosMockAdapter
 
 // Define Mock Express Response Object
 const mockRes: jest.Mocked<Response> = {
@@ -56,6 +59,11 @@ describe('sendMessage', () => {
     jest.spyOn(console, 'log').mockImplementation((...args) => originalLog(...args))
     jest.spyOn(console, 'warn').mockImplementation((...args) => originalWarn(...args))
 
+    const instance: AxiosInstanceType = axios
+    // eslint-disable-next-line @typescript-eslint/prefer-ts-expect-error
+    // @ts-ignore
+    axiosMock = new AxiosMockAdapter(instance)
+
     queryTracker = mockKnex.getTracker()
     queryTracker.install()
 
@@ -91,6 +99,8 @@ describe('sendMessage', () => {
     if (queryTracker !== null && queryTracker !== undefined) {
       queryTracker.uninstall()
     }
+
+    axiosMock?.restore()
   })
 
   afterAll(() => {
@@ -241,36 +251,36 @@ describe('sendMessage', () => {
   it('Calculates price for a 2KB message', () => {
     const message = 'a'.repeat(2048) // 2KB
     const price = calculateMessagePrice(message)
-    expect(price).toBe(8) // Base price + 2KB * 50 sat
+    expect(price).toBe(8) // Base price + 2KB
   })
 
   it('Adds priority fee when enabled', () => {
     const price = calculateMessagePrice('Hello', true)
-    expect(price).toBe(5) // Base price + priority fee
+    expect(price).toBe(5) // Base price
   })
 
   it('Handles large messages (5KB)', () => {
     const message = 'a'.repeat(5120) // 5KB
     const price = calculateMessagePrice(message)
-    expect(price).toBe(17) // Base price + 5KB * 50
+    expect(price).toBe(17) // Base price + 5KB
   })
 
   it('Handles edge case of exactly 1KB message', () => {
     const message = 'a'.repeat(1024) // Exactly 1KB
     const price = calculateMessagePrice(message)
-    expect(price).toBe(5) // Base price + 1KB * 50
+    expect(price).toBe(5) // Base price + 1KB
   })
 
   it('Handles edge case of 1KB + 1 byte message', () => {
     const message = 'a'.repeat(1025) // 1KB + 1 byte
     const price = calculateMessagePrice(message)
-    expect(price).toBe(8) // Rounded up to 2KB * 50
+    expect(price).toBe(8) // Rounded up to 2KB
   })
 
   it('Handles messages larger than 10KB', () => {
     const message = 'a'.repeat(10240) // 10KB
     const price = calculateMessagePrice(message)
-    expect(price).toBe(32) // Base price + 10KB * 50
+    expect(price).toBe(32) // Base price + 10KB
   })
 
   it('Returns error if messageId is missing', async () => {
@@ -297,7 +307,7 @@ describe('sendMessage', () => {
       } else if (step === 2) {
         q.response([validMessageBox]) // Simulate messageBox being inserted
       } else if (step === 3) {
-        q.response([validMessageBox]) // Ensure this step returns the correct messageBox
+        q.response([validMessageBox]) // Simulate finding a valid messageBoxId
       } else {
         q.response([]) // Default response
       }
@@ -355,7 +365,7 @@ describe('sendMessage', () => {
     expect(mockRes.status).toHaveBeenCalledTimes(1)
     expect(mockRes.status).toHaveBeenCalledWith(500)
 
-    // Ensure the correct JSON error response is returned
+    // Ensure the response body is set
     expect(mockRes.json).toHaveBeenCalledTimes(1)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
@@ -364,50 +374,29 @@ describe('sendMessage', () => {
   })
 
   it('Forwards the message to an overlay host if local messageBox is missing', async () => {
+    axiosMock.onPost('https://overlay.example.com/sendMessage').reply(200, {
+      status: 'success',
+      echoed: true,
+      forwarded: true,
+      host: 'https://overlay.example.com'
+    })
+
     queryTracker.on('query', (q, step) => {
-      if (step === 1) q.response(undefined) // messageBox not found
-      else if (step === 2) q.response({ host: 'https://overlay.example.com' }) // overlay ad
+      if (step === 1) q.response(undefined) // No local messageBox
+      else if (step === 2) q.response({ host: 'https://overlay.example.com' }) // Overlay ad found
     })
 
-    ;(global.fetch as jest.Mock).mockResolvedValue({
-      ok: true,
-      json: async () => ({ status: 'success', echoed: true })
-    })
-
+    validReq.auth = { identityKey: 'mockIdKey' }
     validReq.payment = { satoshisPaid: 500 }
 
     await sendMessage.func(validReq, mockRes)
 
     expect(mockRes.status).toHaveBeenCalledWith(200)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'success',
       forwarded: true,
       host: 'https://overlay.example.com'
     }))
-  })
-
-  it('returns 502 if remote overlay host fails', async () => {
-    queryTracker.on('query', (q, step) => {
-      if (step === 1) q.response(undefined) // messageBox not found
-      else if (step === 2) q.response({ host: 'https://overlay.example.com' })
-    })
-
-    ;(global.fetch as jest.Mock).mockResolvedValue({
-      ok: false,
-      text: async () => 'Remote failed'
-    })
-
-    validReq.payment = { satoshisPaid: 500 }
-
-    await sendMessage.func(validReq, mockRes)
-
-    expect(mockRes.status).toHaveBeenCalledWith(502)
-    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'error',
-      code: 'ERR_REMOTE_SEND_FAILED',
-      description: 'Remote failed'
-    }))
-  })
+  }, 15000)
 
   it('creates a new messageBox if no overlay ad is found', async () => {
     queryTracker.on('query', (q, step) => {

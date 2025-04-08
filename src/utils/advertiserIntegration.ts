@@ -69,6 +69,7 @@ export async function broadcastAdvertisement ({
   })
 
   const advertisementTx = createAdvertisementTx(advertisement)
+  const txid = advertisementTx.id('hex')
 
   console.log('[broadcastAdvertisement] Advertisement JSON:', advertisement)
   console.log('[broadcastAdvertisement] Transaction to be broadcast:', advertisementTx)
@@ -76,11 +77,12 @@ export async function broadcastAdvertisement ({
   // Store the advertisement in the database
   try {
     await globalKnex('overlay_ads').insert({
+      txid,
       identity_key: advertisement.identityKey,
       host: advertisement.host,
       nonce: advertisement.nonce,
       signature: advertisement.signature,
-      timestamp: new Date(advertisement.timestamp),
+      timestamp: new Date(advertisement.timestamp).toISOString().slice(0, 19).replace('T', ' '),
       created_at: new Date()
     })
     console.log('[broadcastAdvertisement] Stored advertisement in DB.')

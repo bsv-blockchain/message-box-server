@@ -49,7 +49,7 @@ export default {
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_MESSAGEBOX',
-          description: 'Please provide the name of a valid MessageBox!'
+          description: 'MessageBox name must be a string!'
         })
       }
 

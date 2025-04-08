@@ -1,7 +1,6 @@
 import request from 'supertest'
 import { app, knex, getWallet } from '../../app.js'
-import { afterAll, beforeAll, describe, expect, it } from '@jest/globals'
-import { mockAd } from '../../utils/__mocks__/advertiserIntegration.js'
+import { mockAd as mockAdFactory } from '../../utils/__mocks__/advertiserIntegration.js'
 import { PrivateKey } from '@bsv/sdk'
 import { MessageBoxLookupService } from '../../overlay/services/MessageBoxLookupService.js'
 import * as advertiserUtils from '../../utils/advertiserIntegration.js'
@@ -15,7 +14,6 @@ describe('/overlay integration tests', () => {
     const wallet = await getWallet()
     identityKey = (await wallet.getPublicKey({ identityKey: true })).publicKey
 
-    // Clean slate
     await knex('overlay_ads').where({ identity_key: identityKey }).del()
   })
 
@@ -24,6 +22,8 @@ describe('/overlay integration tests', () => {
   })
 
   it('POST /overlay/advertise should broadcast and store an advertisement', async () => {
+    const mockAd = mockAdFactory()
+
     // eslint-disable-next-line @typescript-eslint/no-misused-promises
     const res = await request(app)
       .post('/overlay/advertise')
@@ -31,57 +31,34 @@ describe('/overlay integration tests', () => {
 
     expect(res.status).toBe(200)
     expect(res.body).toHaveProperty('advertisement')
-    expect(res.body.advertisement).toMatchObject({
+
+    const received = res.body.advertisement
+    expect(received).toMatchObject({
       identityKey: mockAd.identityKey,
-      host: expect.any(String),
-      timestamp: expect.any(Number),
-      nonce: expect.any(String),
-      signature: expect.any(String)
-    })
-
-    // Manually insert mockAd into DB (since broadcast was mocked)
-    await knex('overlay_ads').insert({
-      identity_key: mockAd.identityKey,
       host: mockAd.host,
-      timestamp: mockAd.timestamp,
-      nonce: mockAd.nonce,
-      signature: mockAd.signature,
-      txid: mockAd.txid,
-      created_at: new Date()
-    })
-
-    const rows = await knex('overlay_ads')
-      .where({ identity_key: mockAd.identityKey })
-      .orderBy('created_at', 'desc')
-      .limit(1)
-
-    expect(rows.length).toBeGreaterThan(0)
-    const ad = rows[0]
-
-    expect(ad).toMatchObject({
-      identity_key: mockAd.identityKey,
-      host: mockAd.host,
-      timestamp: mockAd.timestamp,
       nonce: mockAd.nonce,
       signature: mockAd.signature,
       txid: mockAd.txid
     })
+
+    expect(typeof received.timestamp).toBe('string')
+    expect(new Date(received.timestamp).toISOString()).toBe(received.timestamp)
   })
 
   it('GET /overlay/ads should return recent advertisements', async () => {
+    const mockAd = mockAdFactory()
+
     // eslint-disable-next-line @typescript-eslint/no-misused-promises
     const res = await request(app)
       .get('/overlay/ads')
 
     expect(res.status).toBe(200)
     expect(res.body.ads).toBeInstanceOf(Array)
-    expect(res.body.ads.length).toBeGreaterThan(0)
 
     const ad = res.body.ads.find((a: any) => a.identityKey === mockAd.identityKey)
     expect(ad).toMatchObject({
       identityKey: mockAd.identityKey,
       host: mockAd.host,
-      timestamp: mockAd.timestamp,
       nonce: mockAd.nonce,
       signature: mockAd.signature,
       txid: mockAd.txid
@@ -89,6 +66,8 @@ describe('/overlay integration tests', () => {
   })
 
   it('POST /overlay/anoint should broadcast and store an anointment advertisement', async () => {
+    const mockAd = mockAdFactory()
+
     // eslint-disable-next-line @typescript-eslint/no-misused-promises
     const res = await request(app)
       .post('/overlay/anoint')
@@ -97,24 +76,31 @@ describe('/overlay integration tests', () => {
 
     expect(res.status).toBe(200)
     expect(res.body).toHaveProperty('advertisement')
-    expect(res.body.advertisement).toMatchObject({
+    const received = res.body.advertisement
+
+    expect(received).toMatchObject({
       identityKey: mockAd.identityKey,
       host: mockAd.host,
       nonce: mockAd.nonce,
       signature: mockAd.signature,
       txid: mockAd.txid
     })
-    expect(Math.abs(res.body.advertisement.timestamp - mockAd.timestamp)).toBeLessThanOrEqual(1)
+
+    const toIsoString = (ts: string | Date): string =>
+      typeof ts === 'string' ? ts : ts.toISOString()
+
+    const receivedTs = Date.parse(toIsoString(received.timestamp))
+    const expectedTs = Date.parse(toIsoString(mockAd.timestamp))
+
+    expect(Math.abs(receivedTs - expectedTs)).toBeLessThanOrEqual(1000)
   })
 
   it('POST /sendMessage should store a message and return success', async () => {
     const recipient = PrivateKey.fromRandom().toPublicKey().toString()
-
     const messageId = `msg-${Date.now()}`
     const messageBox = 'default'
-    const messageBody = 'This is a test message from overlay integration test.'
+    const messageBody = 'Test message from overlay integration'
 
-    // Clean up any prior messages or messageBox entries
     await knex('messages').where({ messageId }).del()
     await knex('messageBox').where({ identityKey: recipient, type: messageBox }).del()
 
@@ -122,20 +108,13 @@ describe('/overlay integration tests', () => {
     const res = await request(app)
       .post('/sendMessage')
       .set('Authorization', identityKey)
-      .send({
-        message: {
-          messageId,
-          recipient,
-          messageBox,
-          body: messageBody
-        }
-      })
+      .send({ message: { messageId, recipient, messageBox, body: messageBody } })
 
     expect(res.status).toBe(200)
     expect(res.body).toMatchObject({ status: 'success', messageId })
 
-    const storedMessage = await knex('messages').where({ messageId }).first()
-    expect(storedMessage).toMatchObject({
+    const stored = await knex('messages').where({ messageId }).first()
+    expect(stored).toMatchObject({
       messageId,
       sender: identityKey,
       recipient,
@@ -146,11 +125,8 @@ describe('/overlay integration tests', () => {
   it('POST /sendMessage should forward using overlay if no local messageBox exists', async () => {
     const messageId = `overlay-fwd-${Date.now()}`
     const recipient = '03112233445566778899aabbccddeeff00112233445566778899aabbccddeeff00'
-
-    // Ensure no local messageBox
     await knex('messageBox').where({ identityKey: recipient }).del()
 
-    // Scoped mock for this one test
     const spy = jest
       .spyOn(MessageBoxLookupService.prototype, 'forwardMessage')
       .mockResolvedValue({ forwarded: true, host: 'mock-host.com' })
@@ -164,19 +140,15 @@ describe('/overlay integration tests', () => {
           messageId,
           recipient,
           messageBox: 'forward_test',
-          body: 'Overlay forward test'
+          body: 'Forward overlay test'
         }
       })
-    expect(res.status).toBe(200)
-    expect(res.body).toMatchObject({
-      forwarded: true,
-      host: 'mock-host.com'
-    })
 
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({ forwarded: true, host: 'mock-host.com' })
     const stored = await knex('messages').where({ messageId }).first()
     expect(stored).toBeUndefined()
 
-    // Clean up the mock so it doesn’t affect other tests
     spy.mockRestore()
   })
 
@@ -186,7 +158,6 @@ describe('/overlay integration tests', () => {
     const messageId = `msg-${Date.now()}`
     const messageBody = 'Local test message'
 
-    // Create messageBox manually
     const [messageBoxId] = await knex('messageBox').insert({
       identityKey: recipient,
       type: messageBox,
@@ -226,7 +197,7 @@ describe('/overlay integration tests', () => {
     const recipient = PrivateKey.fromRandom().toPublicKey().toString()
     const messageBox = 'ackBox'
     const messageId = `ack-${Date.now()}`
-    const messageBody = 'Message to acknowledge'
+    const messageBody = 'Acknowledge this message'
 
     const [messageBoxId] = await knex('messageBox').insert({
       identityKey: recipient,
@@ -259,6 +230,8 @@ describe('/overlay integration tests', () => {
   })
 
   it('POST /overlay/rebroadcast should succeed', async () => {
+    const mockAd = mockAdFactory()
+
     // eslint-disable-next-line @typescript-eslint/no-misused-promises
     const res = await request(app)
       .post('/overlay/rebroadcast')

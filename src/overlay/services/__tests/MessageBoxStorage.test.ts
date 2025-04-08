@@ -34,13 +34,17 @@ describe('MessageBoxStorage', () => {
 
   describe('storeAdvertisement', () => {
     it('stores a valid advertisement with txid', async () => {
+      const now = new Date()
+
       const ad: Advertisement = {
         identityKey: 'pubkey',
         host: 'http://host',
-        timestamp: 1234567890,
+        timestamp: now.toISOString(),
         nonce: 'abc123',
         signature: 'sig',
-        txid: 'txid123'
+        txid: 'txid123',
+        protocol: 'http',
+        version: '1.0'
       }
 
       const storage = createStorage()
@@ -49,7 +53,7 @@ describe('MessageBoxStorage', () => {
       expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({
         identity_key: ad.identityKey,
         host: ad.host,
-        timestamp: ad.timestamp,
+        timestamp: new Date(ad.timestamp),
         nonce: ad.nonce,
         signature: ad.signature,
         txid: ad.txid
@@ -60,9 +64,11 @@ describe('MessageBoxStorage', () => {
       const ad: Advertisement = {
         identityKey: 'pubkey',
         host: 'http://host',
-        timestamp: 1234567890,
+        timestamp: new Date().toISOString(),
         nonce: 'abc123',
-        signature: 'sig'
+        signature: 'sig',
+        protocol: 'http',
+        version: '1.0'
         // txid intentionally omitted
       }
 
@@ -95,8 +101,24 @@ describe('MessageBoxStorage', () => {
   describe('listRecentAds', () => {
     it('returns the most recent ads', async () => {
       const dbRows = [
-        { identity_key: 'a' },
-        { identity_key: 'b' }
+        {
+          identity_key: 'a',
+          host: 'http://a',
+          timestamp: new Date(),
+          nonce: 'nonce-a',
+          signature: 'sig-a',
+          txid: 'txid-a',
+          created_at: new Date()
+        },
+        {
+          identity_key: 'b',
+          host: 'http://b',
+          timestamp: new Date(),
+          nonce: 'nonce-b',
+          signature: 'sig-b',
+          txid: 'txid-b',
+          created_at: new Date()
+        }
       ]
       mockLimit.mockResolvedValueOnce(dbRows)
 

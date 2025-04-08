@@ -5,7 +5,7 @@ export async function up (knex: Knex): Promise<void> {
     table.increments('id').primary()
     table.string('identityKey').notNullable().index()
     table.string('host').notNullable()
-    table.timestamp('timestamp').notNullable()
+    table.timestamp('timestamp', { useTz: true }).notNullable()
     table.text('nonce').notNullable()
     table.text('signature').notNullable()
     table.jsonb('raw_advertisement').notNullable()

@@ -68,9 +68,16 @@ export async function createAdvertisement ({
     counterparty: 'anyone'
   })
 
-  const signatureHex = signatureResult.signature
-    .map(n => n.toString(16).padStart(2, '0'))
-    .join('')
+  let signatureHex: string
+  const sig = signatureResult.signature
+
+  if (typeof sig === 'string') {
+    signatureHex = sig
+  } else if (Array.isArray(sig)) {
+    signatureHex = sig.map(n => n.toString(16).padStart(2, '0')).join('')
+  } else {
+    throw new Error('Unexpected signature type')
+  }
 
   return {
     ...advertisementData,

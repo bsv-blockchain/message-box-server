@@ -1,22 +1,20 @@
 /* eslint-env jest */
 import { createAdvertisement } from '../../utils/advertiser.js'
-import { createNonce, ECDSA, WalletInterface, Signature } from '@bsv/sdk'
+import { createNonce } from '@bsv/sdk'
+import type { WalletInterface } from '@bsv/sdk'
 
-// Mock the SDK functions to control their behavior.
 jest.mock('@bsv/sdk', () => {
   const originalModule = jest.requireActual('@bsv/sdk')
   return {
     ...originalModule,
-    createNonce: jest.fn(),
-    ECDSA: {
-      ...originalModule.ECDSA,
-      sign: jest.fn()
-    }
+    createNonce: jest.fn()
   }
 })
 
 describe('advertiser module', () => {
-  const dummyWallet = {} as unknown as WalletInterface
+  const dummyWallet = {
+    createSignature: jest.fn()
+  } as unknown as WalletInterface
 
   beforeEach(() => {
     jest.clearAllMocks()
@@ -33,12 +31,6 @@ describe('advertiser module', () => {
         version: '1.0'
       }
 
-      const dummySig = {
-        toDER: () => 'dummySignature'
-      } as unknown as Signature
-
-      ;(ECDSA.sign as jest.Mock).mockReturnValue(dummySig)
-
       const fixedTimestamp = '2025-04-01T12:00:00.000Z'
       const OriginalDate = Date
       global.Date = class extends Date {
@@ -47,6 +39,10 @@ describe('advertiser module', () => {
           return new OriginalDate(fixedTimestamp)
         }
       } as any
+
+      ;(dummyWallet.createSignature as jest.Mock).mockResolvedValue({
+        signature: 'dummySignature'
+      })
 
       const ad = await createAdvertisement({
         host: adData.host,
@@ -58,42 +54,47 @@ describe('advertiser module', () => {
       expect(ad.protocol).toBe('MB_AD')
       expect(ad.version).toBe('1.0')
       expect(ad.timestamp).toBe(fixedTimestamp)
+
       global.Date = OriginalDate
     })
   })
 
   describe('signMessage behavior', () => {
-    it('should return a string if ECDSA.sign returns a Signature with toDER("hex")', async () => {
-      const dummySig = {
-        toDER: () => 'signatureString'
-      } as unknown as Signature
-      ;(ECDSA.sign as jest.Mock).mockReturnValue(dummySig)
+    it('should return a string if createSignature returns a string', async () => {
+      ;(dummyWallet.createSignature as jest.Mock).mockResolvedValue({
+        signature: 'signatureString'
+      })
+
       const result = await createAdvertisement({
         host: 'https://example.com',
         identityKey: 'key123',
         nonce: 'providedNonce',
         wallet: dummyWallet
       })
+
       expect(result.signature).toBe('signatureString')
     })
 
     it('should convert an array signature to a hex string', async () => {
-      ;(ECDSA.sign as jest.Mock).mockReturnValue({
-        toDER: (enc?: 'hex' | 'base64') => enc === 'hex' ? '010fff' : [1, 15, 255]
+      ;(dummyWallet.createSignature as jest.Mock).mockResolvedValue({
+        signature: [1, 15, 255]
       })
+
       const ad = await createAdvertisement({
         host: 'https://example.com',
         identityKey: 'key123',
         nonce: 'providedNonce',
         wallet: dummyWallet
       })
+
       expect(ad.signature).toBe('010fff')
     })
 
-    it('should throw an error if ECDSA.sign returns an unexpected type', async () => {
-      ;(ECDSA.sign as jest.Mock).mockReturnValue({
-        toDER: () => 12345 // Not a string or array
+    it('should throw an error if signature is an unexpected type', async () => {
+      ;(dummyWallet.createSignature as jest.Mock).mockResolvedValue({
+        signature: 12345
       })
+
       await expect(
         createAdvertisement({
           host: 'https://example.com',
@@ -107,30 +108,34 @@ describe('advertiser module', () => {
 
   describe('createAdvertisement nonce handling', () => {
     it('should use the provided nonce if non-empty', async () => {
-      ;(ECDSA.sign as jest.Mock).mockReturnValue({
-        toDER: () => 'dummySignature'
-      } as unknown as Signature)
+      ;(dummyWallet.createSignature as jest.Mock).mockResolvedValue({
+        signature: 'dummySignature'
+      })
+
       const ad = await createAdvertisement({
         host: 'https://example.com',
         identityKey: 'key123',
         nonce: 'providedNonce',
         wallet: dummyWallet
       })
+
       expect(ad.nonce).toBe('providedNonce')
       expect(createNonce).not.toHaveBeenCalled()
     })
 
     it('should call createNonce if provided nonce is empty', async () => {
       ;(createNonce as jest.Mock).mockResolvedValue('generatedNonce')
-      ;(ECDSA.sign as jest.Mock).mockReturnValue({
-        toDER: () => 'dummySignature'
-      } as unknown as Signature)
+      ;(dummyWallet.createSignature as jest.Mock).mockResolvedValue({
+        signature: 'dummySignature'
+      })
+
       const ad = await createAdvertisement({
         host: 'https://example.com',
         identityKey: 'key123',
-        nonce: '  ',
+        nonce: '   ',
         wallet: dummyWallet
       })
+
       expect(createNonce).toHaveBeenCalledWith(dummyWallet)
       expect(ad.nonce).toBe('generatedNonce')
     })
@@ -138,15 +143,17 @@ describe('advertiser module', () => {
 
   describe('createAdvertisement timestamp', () => {
     it('should produce a valid ISO timestamp', async () => {
-      ;(ECDSA.sign as jest.Mock).mockReturnValue({
-        toDER: () => 'dummySignature'
-      } as unknown as Signature)
+      ;(dummyWallet.createSignature as jest.Mock).mockResolvedValue({
+        signature: 'dummySignature'
+      })
+
       const ad = await createAdvertisement({
         host: 'https://example.com',
         identityKey: 'key123',
         nonce: 'providedNonce',
         wallet: dummyWallet
       })
+
       expect(Date.parse(ad.timestamp)).not.toBeNaN()
     })
   })

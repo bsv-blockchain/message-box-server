@@ -34,15 +34,20 @@ export class MessageBoxTopicManager {
     if (txid == null || txid === '') throw new Error('Missing txid in result.')
 
     const ad: Advertisement = {
+      protocol: 'MB_AD',
+      version: '1.0',
       identityKey: adRaw.identityKey,
       host: adRaw.host,
-      timestamp: Number(adRaw.timestamp),
+      timestamp: adRaw.timestamp,
       nonce: adRaw.nonce,
       signature: adRaw.signature,
       txid
     }
 
-    await new MessageBoxStorage(knex).storeAdvertisement(ad)
+    await new MessageBoxStorage(knex).storeAdvertisement({
+      ...ad,
+      timestamp: new Date(ad.timestamp)
+    })
 
     Logger.log('[ADVERTISER] Advertisement stored in overlay_ads table.')
 
