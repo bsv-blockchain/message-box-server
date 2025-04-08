@@ -6,7 +6,7 @@ export interface AuthriteRequest extends Request {
     identityKey: string
   }
   body: {
-    messageIds?: string[] // Ensure string[] as expected
+    messageIds?: string[]
   }
 }
 

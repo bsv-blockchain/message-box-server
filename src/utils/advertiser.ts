@@ -3,6 +3,10 @@ import {
   WalletInterface
 } from '@bsv/sdk'
 
+/**
+ * Represents a signed advertisement on the overlay network.
+ * Used to associate a user's identity key with a host URL.
+ */
 export interface Advertisement {
   protocol: string
   version: string
@@ -15,7 +19,11 @@ export interface Advertisement {
 
 /**
  * Canonicalizes the advertisement data.
- * Uses JSON.stringify with sorted keys.
+ * Converts the input object into a JSON string with sorted keys
+ * to ensure deterministic signing.
+ *
+ * @param data - Advertisement data excluding the signature
+ * @returns Canonicalized string
  */
 function canonicalize (data: Omit<Advertisement, 'signature'>): string {
   const sortedKeys = Object.keys(data).sort()
@@ -27,7 +35,13 @@ function canonicalize (data: Omit<Advertisement, 'signature'>): string {
 }
 
 /**
- * Creates an advertisement message with a cryptographic signature using WalletInterface.
+ * Creates a signed advertisement that can be broadcast on the overlay.
+ *
+ * @param host - The URL of the host being advertised
+ * @param identityKey - The user's identity key signing the advertisement
+ * @param nonce - Optional nonce (will generate one if omitted)
+ * @param wallet - Wallet interface used to sign the advertisement
+ * @returns Advertisement object with signature
  */
 export async function createAdvertisement ({
   host,
@@ -44,6 +58,7 @@ export async function createAdvertisement ({
   const version = '1.0'
   const timestamp = new Date().toISOString()
 
+  // Use provided nonce or generate a new one
   const resolvedNonce =
     nonce != null && nonce.trim() !== ''
       ? nonce
@@ -58,6 +73,7 @@ export async function createAdvertisement ({
     nonce: resolvedNonce
   }
 
+  // Canonicalize and encode the advertisement data
   const canonicalMessage = canonicalize(advertisementData)
   const messageBytes = Array.from(new TextEncoder().encode(canonicalMessage))
 
@@ -68,6 +84,7 @@ export async function createAdvertisement ({
     counterparty: 'anyone'
   })
 
+  // Normalize signature to hex string
   let signatureHex: string
   const sig = signatureResult.signature
 
@@ -79,6 +96,7 @@ export async function createAdvertisement ({
     throw new Error('Unexpected signature type')
   }
 
+  // Return the full signed advertisement
   return {
     ...advertisementData,
     signature: signatureHex

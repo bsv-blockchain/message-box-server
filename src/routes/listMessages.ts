@@ -7,6 +7,7 @@ import { Logger } from '../utils/logger.js'
 
 const { NODE_ENV = 'development' } = process.env
 
+// Initialize Knex based on environment
 const knex: knexLib.Knex = (knexLib as any).default?.(
   NODE_ENV === 'production' || NODE_ENV === 'staging'
     ? knexConfig.production
@@ -17,11 +18,19 @@ const knex: knexLib.Knex = (knexLib as any).default?.(
     : knexConfig.development
 )
 
+/**
+ * Extended Express Request interface for the /listMessages route.
+ *
+ * Includes:
+ * - `auth.identityKey`: Identity key extracted from the Authorization header.
+ * - `body.messageBox`: The name of the messageBox to list messages from.
+ */
 interface ListMessagesRequest extends Request {
   auth: { identityKey: string }
   body: { messageBox?: string }
 }
 
+// Exported route definition for listing messages from a messageBox.
 export default {
   type: 'post',
   path: '/listMessages',
@@ -40,6 +49,13 @@ export default {
       }
     ]
   },
+
+  /**
+   * Main handler function for the /listMessages route.
+   *
+   * Checks the local messageBox table for messages for the authenticated identityKey.
+   * Falls back to an overlay service if no local messageBox exists.
+   */
   func: async (req: ListMessagesRequest, res: Response): Promise<Response> => {
     try {
       const { messageBox } = req.body

@@ -267,7 +267,6 @@ export const start = async (): Promise<void> => {
         await socket.emit('joinedRoom', { roomId })
       })
 
-      // Re-adding Leave Room Handling
       socket.on('leaveRoom', async (roomId: string) => {
         if (!authenticatedSockets.has(socket.id)) {
           Logger.warn('[WEBSOCKET] Unauthorized attempt to leave a room.')
@@ -295,73 +294,6 @@ export const start = async (): Promise<void> => {
 
 export { io, http, HTTP_PORT, ROUTING_PREFIX }
 
-// const paymentMiddleware = createPaymentMiddleware({
-//   wallet,
-//   calculateRequestPrice: async (req) => {
-//     Logger.log('[DEBUG] Payment Middleware Triggered')
-
-//     const body = req.body as { message?: { body: string }, priority?: boolean }
-
-//     if (body.message?.body == null) {
-//       Logger.warn('[WARNING] No message body provided, skipping payment calculation.')
-//       return 0
-//     }
-
-//     const price = calculateMessagePrice(body.message.body, body.priority ?? false)
-//     Logger.log(`[DEBUG] Calculated payment requirement: ${price} satoshis`)
-//     return price
-//   }
-// })
-
-// Start API Server
-// http.listen(HTTP_PORT, () => {
-//   Logger.log('MessageBox listening on port', HTTP_PORT)
-//   if (
-//     NODE_ENV !== 'development' &&
-//     process.env.SKIP_NGINX !== 'true' &&
-//     process.env.NODE_ENV !== 'test'
-//   ) {
-//     spawn('nginx', [], { stdio: ['inherit', 'inherit', 'inherit'] })
-//   }
-
-//   (async () => {
-//     await delay(8000)
-//     await knex.migrate.latest()
-
-//     try {
-//       Logger.log('[ADVERTISER] Broadcasting advertisement on startup...')
-//       const _wallet = await getWallet()
-
-//       const result = await broadcastAdvertisement({
-//         host: process.env.ADVERTISEMENT_HOST ?? `http://localhost:${HTTP_PORT}`,
-//         identityKey: (await _wallet.getPublicKey({ identityKey: true })).publicKey,
-//         privateKey: SERVER_PRIVATE_KEY,
-//         wallet: _wallet
-//       })
-
-//       Logger.log('[ADVERTISER] Broadcast result:', result)
-//     } catch (error) {
-//       Logger.error('[ADVERTISER ERROR] Failed to broadcast on startup:', error)
-//     }
-
-// Optional: Periodic rebroadcast every 5 minutes
-// setInterval(async () => {
-//   try {
-//     Logger.log('[ADVERTISER] Periodic rebroadcast starting...')
-//     const rebroadcast = await broadcastAdvertisement({
-//       host: process.env.ADVERTISEMENT_HOST ?? `http://localhost:${HTTP_PORT}`,
-//       identityKey: (await wallet.getPublicKey({ identityKey: true })).publicKey,
-//       privateKey: SERVER_PRIVATE_KEY,
-//       wallet
-//     })
-//     Logger.log('[ADVERTISER] Periodic rebroadcast result:', rebroadcast)
-//   } catch (error) {
-//     Logger.error('[ADVERTISER ERROR] Periodic rebroadcast failed:', error)
-//   }
-// }, 5 * 60 * 1000) // 5 minutes
-//   })().catch((error) => { Logger.error(error) })
-// })
-
 const delay = async (ms: number): Promise<void> =>
   await new Promise(resolve => setTimeout(resolve, ms))
 
@@ -380,10 +312,6 @@ if (NODE_ENV !== 'test') {
     ;(async () => {
       await delay(8000)
       await knex.migrate.latest()
-
-      // ✨ (Optional) Future overlay service initialization could go here:
-      // const overlay = createOverlayService(mongoDb)
-      // await overlay.broadcastMyself()
     })().catch((error) => {
       Logger.error('[STARTUP ERROR]', error)
     })

@@ -92,7 +92,7 @@ export function useRoutes (): void {
     }
   })
 
-  // ✅ Inject test-safe identityKey from Authorization header
+  // Inject test-safe identityKey from Authorization header
   app.use((req, res, next) => {
     const identityKey = req.get('Authorization')
     if (identityKey != null && identityKey.trim() !== '') {

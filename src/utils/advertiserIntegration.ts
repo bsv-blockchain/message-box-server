@@ -3,10 +3,16 @@ import { TopicBroadcaster, Transaction } from '@bsv/sdk'
 import type { WalletInterface } from '@bsv/sdk'
 import { TextEncoder } from 'util'
 
-// IMPORTANT: If you're using the same knex instance from index.ts,
-// you can import it directly from there (recommended):
 import { knex as globalKnex } from '../app.js'
 
+/**
+ * Generates a deterministic transaction ID for advertisement transactions.
+ * If called with 'hex', returns a string identifier for display/logging purposes.
+ * Otherwise, returns a Uint8Array as an array of numbers.
+ *
+ * @param enc - Optional encoding type ('hex')
+ * @returns Transaction ID as a string or array of bytes
+ */
 export function advertisementTxId (): number[]
 export function advertisementTxId (enc: 'hex'): string
 export function advertisementTxId (enc?: 'hex'): string | number[] {
@@ -16,6 +22,14 @@ export function advertisementTxId (enc?: 'hex'): string | number[] {
   return Array.from(new TextEncoder().encode('advertisementTxId'))
 }
 
+/**
+ * Creates a BSV transaction with a custom `toBEEF()` method
+ * that encodes the advertisement JSON payload as bytes.
+ * This transaction is used for broadcasting to the overlay network.
+ *
+ * @param ad - Advertisement object
+ * @returns Custom transaction with embedded advertisement data
+ */
 export function createAdvertisementTx (ad: Advertisement): Transaction {
   const tx = new Transaction()
   tx.version = 1
@@ -37,8 +51,16 @@ export function createAdvertisementTx (ad: Advertisement): Transaction {
 }
 
 /**
- * Sends an advertisement over the overlay network using TopicBroadcaster.
- * Accepts optional broadcaster for test overrides.
+ * Creates, signs, stores, and broadcasts an advertisement transaction
+ * over the overlay network using TopicBroadcaster. Optionally allows test
+ * injection of a broadcaster instance.
+ *
+ * @param host - The host address being advertised
+ * @param identityKey - The user's identity key signing the advertisement
+ * @param wallet - Wallet used to sign the advertisement
+ * @param topics - Optional SHIP topics to publish to
+ * @param broadcaster - Optional broadcaster override for testing
+ * @returns Status, optional error info, and the advertisement
  */
 export async function broadcastAdvertisement ({
   host,

@@ -17,11 +17,34 @@ const knex: knexLib.Knex = (knexLib as any).default?.(
     : knexConfig.development
 )
 
+/**
+ * Extended Express Request interface for /acknowledgeMessage route.
+ *
+ * Includes:
+ * - `auth.identityKey`: The authenticated identity key of the requester (injected via middleware).
+ * - `body.messageIds`: An optional array of message IDs to be acknowledged.
+ *
+ * Used to ensure type safety and clarity when handling the /acknowledgeMessage POST request.
+ */
 export interface AcknowledgeRequest extends Request {
   auth: { identityKey: string }
   body: { messageIds?: string[] }
 }
 
+/**
+ * Express route handler for acknowledging messages.
+ *
+ * This route allows a recipient to acknowledge one or more messages by their IDs.
+ *
+ * If the messages exist in the local database, they are deleted and the route returns success.
+ * If the messages are not found locally, the system attempts to forward the acknowledgment
+ * to a remote overlay host that the recipient has anointed.
+ *
+ * Supports both local and overlay-based acknowledgment behavior.
+ *
+ * Route: POST /acknowledgeMessage
+ * Auth: Required via `Authorization` header
+ */
 export default {
   type: 'post',
   path: '/acknowledgeMessage',

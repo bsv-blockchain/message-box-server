@@ -1,11 +1,18 @@
 import { Request } from 'express'
 
+/**
+ * An Express request that includes an authenticated identityKey.
+ */
 export interface AuthenticatedRequest extends Request {
   auth: {
     identityKey: string
   }
 }
 
+/**
+ * Base structure of an advertisement before protocol metadata is applied.
+ * Represents a user's approval for a host to receive their messages.
+ */
 export interface AdvertisementBase {
   identityKey: string
   host: string
@@ -14,7 +21,10 @@ export interface AdvertisementBase {
   signature: string
 }
 
-// What’s broadcasted over the wire (includes protocol/version)
+/**
+ * Complete structure of an overlay advertisement, including protocol and version metadata.
+ * Optionally includes a txid once broadcasted on the overlay network.
+ */
 export interface Advertisement extends AdvertisementBase {
   protocol: string
   version: string
@@ -22,7 +32,7 @@ export interface Advertisement extends AdvertisementBase {
 }
 
 /**
- * Structure of a routed/relayed message.
+ * Structure of a routed/relayed message sent through messagebox.
  */
 export interface Message {
   messageId: string
@@ -35,13 +45,16 @@ export interface Message {
 }
 
 /**
- * Response structure for forwarded messages.
+ * Response structure indicating whether a message was successfully forwarded to a remote host.
  */
 export interface ForwardResult {
   forwarded: boolean
   host?: string
 }
 
+/**
+ * Representation of a row in the `overlay_ads` database table.
+ */
 export interface OverlayAdRow {
   identity_key: string
   host: string
