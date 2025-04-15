@@ -73,7 +73,7 @@ export class MessageBoxStorage {
       signature: row.signature,
       txid: row.txid,
       created_at: row.created_at,
-      protocol: 'MB_AD',
+      protocol: 'MBSERVEAD',
       version: '1.0'
     }))
   }

@@ -39,7 +39,7 @@ export default class MessageBoxTopicManager implements TopicManager {
           }
 
           const verified = await anyoneWallet.verifySignature({
-            protocolID: [0, 'MB_AD'],
+            protocolID: [0, 'MBSERVEAD'],
             keyID: '1',
             counterparty: ad.identityKey,
             data: [
@@ -121,7 +121,7 @@ export default class MessageBoxTopicManager implements TopicManager {
     let signature: number[]
     try {
       const { signature: rawSignature } = await wallet.createSignature({
-        protocolID: [0, 'MB_AD'],
+        protocolID: [0, 'MBSERVEAD'],
         keyID: '1',
         counterparty: identityKey,
         data: payload
@@ -140,7 +140,7 @@ export default class MessageBoxTopicManager implements TopicManager {
       timestamp,
       nonce,
       signature: Utils.toHex(signature),
-      protocol: 'MB_AD',
+      protocol: 'MBSERVEAD',
       version: '1.0'
     }
     Logger.log('[MB SERVER] Advertisement object:', advertisement)
