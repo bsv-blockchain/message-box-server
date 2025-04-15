@@ -23,5 +23,5 @@ The signature is checked before accepting any advertisement into the overlay. In
 
 ## Topic Name
 
-This overlay topic uses the name: \`ls_messagebox\`
+This overlay topic uses the name: \`lsmessagebox\`
 `

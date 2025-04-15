@@ -20,7 +20,7 @@ export class MessageBoxLookupService implements MessageBoxLookupServiceContract 
   private async resolveHost (identityKey: string): Promise<string | null> {
     try {
       const result = await this.resolver.query({
-        service: 'ls_messagebox',
+        service: 'lsmessagebox',
         query: { identityKey }
       })
 
@@ -125,5 +125,21 @@ export class MessageBoxLookupService implements MessageBoxLookupServiceContract 
     }
 
     return null
+  }
+
+  public async lookup (query: { identityKey: string }): Promise<{ type: 'freeform', hosts: string[] }> {
+    const host = await this.resolveHost(query.identityKey)
+
+    if (host !== null && host !== '') {
+      return {
+        type: 'freeform',
+        hosts: [host]
+      }
+    }
+
+    return {
+      type: 'freeform',
+      hosts: []
+    }
   }
 }

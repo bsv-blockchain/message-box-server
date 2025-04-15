@@ -1,0 +1,77 @@
+services:
+  overlay-dev-container:
+    build:
+      context: ..
+      dockerfile: ./local-data/overlay-dev-container/Dockerfile
+    restart: always
+    ports:
+      - 8080:8080
+    environment:
+      MONGO_URL: mongodb://mongo:27017/overlay-db
+      KNEX_URL: mysql://overlayAdmin:overlay123@mysql:3306/overlay
+      SERVER_PRIVATE_KEY: 72b0b48149e26a2ec9ba14c35cf7f3137ded592716830a0c44f6cb0289c7aa1e
+      HOSTING_URL: localhost:8080
+      NETWORK: testnet
+      REQUEST_LOGGING: "true"
+      GASP_SYNC: "false"
+      LOG_TIME: "false"
+      LOG_PREFIX: "[LARS OVERLAY ENGINE] "
+      THROW_ON_BROADCAST_FAIL: "false"
+      SYNC_CONFIG_JSON: "{}"
+    depends_on:
+      - mysql
+      - mongo
+    volumes:
+      - C:\Users\shimm\Projects\Work\MessageBox\MessageBoxServer\backend\src:/app/src
+      - C:\Users\shimm\Projects\Work\MessageBox\MessageBoxServer\backend\artifacts:/app/artifacts
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: overlay
+      MYSQL_USER: overlayAdmin
+      MYSQL_PASSWORD: overlay123
+      MYSQL_ROOT_PASSWORD: rootpassword
+    ports:
+      - 3306:3306
+    volumes:
+      - C:\Users\shimm\Projects\Work\MessageBox\MessageBoxServer\local-data\mysql:/var/lib/mysql
+    healthcheck:
+      test:
+        - CMD
+        - mysqladmin
+        - ping
+        - -h
+        - localhost
+      interval: 10s
+      timeout: 5s
+      retries: 3
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 8081:8080
+    environment:
+      ADMINER_DEFAULT_SERVER: mysql
+    depends_on:
+      - mysql
+  mongo:
+    image: mongo:6.0
+    ports:
+      - 27017:27017
+    volumes:
+      - C:\Users\shimm\Projects\Work\MessageBox\MessageBoxServer\local-data\mongo:/data/db
+    command:
+      - mongod
+      - --quiet
+  mongoexpress:
+    image: mongo-express
+    restart: always
+    ports:
+      - 8082:8081
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongo
+      ME_CONFIG_MONGODB_PORT: "27017"
+      ME_CONFIG_BASICAUTH_USERNAME: ""
+      ME_CONFIG_BASICAUTH_PASSWORD: ""
+    depends_on:
+      - mongo

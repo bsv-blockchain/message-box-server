@@ -39,7 +39,7 @@ export default class MessageBoxTopicManager implements TopicManager {
           }
 
           const verified = await anyoneWallet.verifySignature({
-            protocolID: [0, 'messagebox-ad'],
+            protocolID: [0, 'MB_AD'],
             keyID: '1',
             counterparty: ad.identityKey,
             data: [
@@ -121,7 +121,7 @@ export default class MessageBoxTopicManager implements TopicManager {
     let signature: number[]
     try {
       const { signature: rawSignature } = await wallet.createSignature({
-        protocolID: [0, 'messagebox-ad'],
+        protocolID: [0, 'MB_AD'],
         keyID: '1',
         counterparty: identityKey,
         data: payload

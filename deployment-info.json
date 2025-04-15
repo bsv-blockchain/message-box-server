@@ -5,7 +5,7 @@
       "tm_messagebox": "./src/overlay/services/MessageBoxTopicManager.ts"
     },
     "lookupServices": {
-      "ls_messagebox": {
+      "lsmessagebox": {
         "serviceFactory": "./src/overlay/services/MessageBoxLookupServiceFactory.ts",
         "hydrateWith": "mongo"
       }
