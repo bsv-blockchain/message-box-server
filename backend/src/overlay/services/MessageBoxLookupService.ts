@@ -10,7 +10,9 @@ export class MessageBoxLookupService implements MessageBoxLookupServiceContract 
 
   constructor () {
     this.resolver = new LookupResolver({
-      networkPreset: process.env.BSV_NETWORK as 'local' | 'mainnet' | 'testnet' ?? 'local'
+      networkPreset: (typeof window !== 'undefined' && location.hostname === 'localhost'
+        ? 'local'
+        : (process.env.BSV_NETWORK as 'local' | 'mainnet' | 'testnet') ?? 'mainnet')
     })
   }
 
