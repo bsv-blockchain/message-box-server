@@ -1,12 +1,20 @@
 import { Knex } from 'knex'
+import knexModule from 'knex'
+import knexConfig from './knexfile.js' // Adjust path as needed
 
-/**
- * MessageBoxStorage provides a SHIP-compatible storage engine
- * that maps identity keys to advertised hosts from overlay messages.
- */
+const knex = knexModule.default ?? knexModule
+
 export class MessageBoxStorage {
-  constructor(private readonly knex: Knex) {}
+  private readonly knex: Knex
 
+  constructor(knexInstance?: Knex) {
+    if (knexInstance != null) {
+      this.knex = knexInstance
+    } else {
+      this.knex = knex(knexConfig.development)
+    }
+  }
+  
   /**
    * Stores a record received from a SHIP broadcast.
    * Called by outputAdded() in LookupService.
@@ -26,19 +34,12 @@ export class MessageBoxStorage {
     })
   }
 
-  /**
-   * Deletes a record when the corresponding output is spent or deleted.
-   */
   async deleteRecord(txid: string, outputIndex: number): Promise<void> {
     await this.knex('overlay_ads')
       .where({ txid, output_index: outputIndex })
       .del()
   }
 
-  /**
-   * Finds all known host advertisements for a given identityKey.
-   * Used in LookupService.lookup().
-   */
   async findHostsForIdentity(identityKey: string): Promise<string[]> {
     const rows = await this.knex('overlay_ads')
       .select('host')
@@ -48,9 +49,6 @@ export class MessageBoxStorage {
     return rows.map(row => row.host)
   }
 
-  /**
-   * Optional: Find all identity-to-host mappings for debugging or discovery.
-   */
   async findAll(): Promise<{ identityKey: string, host: string }[]> {
     const rows = await this.knex('overlay_ads')
       .select('identitykey', 'host')
