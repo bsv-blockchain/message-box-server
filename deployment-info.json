@@ -6,14 +6,9 @@
     },
     "lookupServices": {
       "lsmessagebox": {
-        "serviceFactory": "./src/overlay/services/MessageBoxLookupServiceFactory.ts",
+        "serviceFactory": "./src/overlay/services/MessageBoxLookupService.ts",
         "hydrateWith": "mongo"
       }
-    },
-    "overlayRoutes": "./src/overlay/services/configureOverlayRoutes.ts",
-    "frontend": {
-      "language": "none",
-      "sourceDirectory": "./"
     },
     "contracts": {
       "language": "sCrypt",

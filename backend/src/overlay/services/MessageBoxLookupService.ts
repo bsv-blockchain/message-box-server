@@ -1,145 +1,112 @@
-import { LookupResolver } from '@bsv/sdk'
-import type { MessageBoxLookupServiceContract, Message } from '../contracts/MessageBoxContract.js'
+import {
+  LookupService,
+  LookupQuestion,
+  LookupAnswer,
+  LookupFormula
+} from '@bsv/overlay'
+
+import { MessageBoxStorage } from './MessageBoxStorage.js'
+import { Script } from '@bsv/sdk'
+import docs from './MessageBoxLookupDocs.md.js'
+import { Knex } from 'knex'
 
 /**
- * Provides SHIP-based overlay routing logic for MessageBox using LookupResolver.
- * This version no longer relies on local database storage or HTTP endpoints.
+ * Implements a MessageBox overlay lookup service for use with SHIP
  */
-export class MessageBoxLookupService implements MessageBoxLookupServiceContract {
-  private readonly resolver: LookupResolver
+class MessageBoxLookupService implements LookupService {
+  constructor(public storage: MessageBoxStorage) {}
 
-  constructor () {
-    this.resolver = new LookupResolver({
-      networkPreset: process.env.BSV_NETWORK as 'local' | 'mainnet' | 'testnet' ?? 'local'
-    })
-  }
+  async outputAdded?(
+    txid: string,
+    outputIndex: number,
+    outputScript: Script,
+    topic: string
+  ): Promise<void> {
+    if (topic !== 'tm_messagebox') return
 
-  /**
-   * Uses LookupResolver to find the remote host responsible for the given identity.
-   */
-  private async resolveHost (identityKey: string): Promise<string | null> {
+    function hasBuf(chunk: unknown): chunk is { buf: Uint8Array } {
+      return !!chunk && typeof chunk === 'object' && chunk !== null && 'buf' in chunk && chunk.buf instanceof Uint8Array
+    }
+    
     try {
-      const result = await this.resolver.query({
-        service: 'lsmessagebox',
-        query: { identityKey }
-      })
-
-      if (
-        result != null &&
-        typeof result === 'object' &&
-        'type' in result &&
-        result.type === 'freeform' &&
-        'hosts' in result &&
-        Array.isArray((result as any).hosts)
-      ) {
-        const hosts = (result as any).hosts
-        if (hosts.length > 0) {
-          return String(hosts[0])
-        }
+      const chunks = outputScript.chunks
+    
+      const hostsChunk = chunks.find(c => hasBuf(c) && Buffer.from(c.buf).toString().includes('http'))
+      const host = hostsChunk && hasBuf(hostsChunk) ? Buffer.from(hostsChunk.buf).toString() : null
+    
+      const keyChunk = chunks.find(c => hasBuf(c) && c.buf.length === 33)
+      const identityKey = keyChunk && hasBuf(keyChunk) ? Buffer.from(keyChunk.buf).toString('hex') : null
+    
+      if (!host || !identityKey) {
+        console.warn(`[SHIP] Incomplete broadcast: host=${host}, key=${identityKey}`)
+        return
       }
-
-      console.warn(`[LOOKUP] No valid host found for ${identityKey}.`)
-    } catch (error) {
-      console.warn(`[LOOKUP] Failed to resolve host for ${identityKey}:`, error)
-    }
-
-    return null
+    
+      await this.storage.storeRecord(identityKey, host, txid, outputIndex)
+    } catch (e) {
+      console.error('Error processing SHIP broadcast in MessageBox lookup:', e)
+    }    
   }
 
-  async acknowledgeMessages (identityKey: string, messageIds: string[]): Promise<{ acknowledged: boolean } | null> {
-    const host = await this.resolveHost(identityKey)
-    if (host === null || host === '') return null
-
-    try {
-      const response = await fetch(`${host}/acknowledgeMessage`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: identityKey
-        },
-        body: JSON.stringify({ messageIds })
-      })
-
-      const data = await response.json()
-      if (data?.status === 'success') {
-        return { acknowledged: true }
-      }
-
-      console.warn(`[OVERLAY] Acknowledgment request to ${host} failed with response:`, data)
-    } catch (err) {
-      console.warn('[OVERLAY] Remote acknowledgeMessage failed:', err)
+  async outputSpent?(
+    txid: string,
+    outputIndex: number,
+    topic: string
+  ): Promise<void> {
+    if (topic === 'tm_messagebox') {
+      await this.storage.deleteRecord(txid, outputIndex)
     }
-
-    return null
   }
 
-  async listMessages (identityKey: string, messageBox: string): Promise<Message[] | null> {
-    const host = await this.resolveHost(identityKey)
-    if (host === null || host === '') return null
-
-    try {
-      const response = await fetch(`${host}/listMessages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: identityKey
-        },
-        body: JSON.stringify({ messageBox })
-      })
-
-      const data = await response.json()
-      if (data?.status === 'success' && Array.isArray(data.messages)) {
-        return data.messages
-      }
-
-      console.warn(`[OVERLAY] listMessages request to ${host} failed with response:`, data)
-    } catch (error) {
-      console.warn('[OVERLAY] Error while forwarding listMessages:', error)
+  async outputDeleted?(
+    txid: string,
+    outputIndex: number,
+    topic: string
+  ): Promise<void> {
+    if (topic === 'tm_messagebox') {
+      await this.storage.deleteRecord(txid, outputIndex)
     }
-
-    return null
   }
 
-  async forwardMessage (message: Message, sender: string): Promise<{ forwarded: boolean, host?: string } | null> {
-    const host = await this.resolveHost(message.recipient)
-    if (host === null || host === '') return null
-
-    try {
-      const response = await fetch(`${host}/sendMessage`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: sender
-        },
-        body: JSON.stringify({ sender, message })
-      })
-
-      const data = await response.json()
-      if (data?.status === 'success') {
-        return { forwarded: true, host }
-      }
-
-      console.warn(`[OVERLAY] sendMessage request to ${host} failed with response:`, data)
-    } catch (error) {
-      console.warn('[OVERLAY] Error while forwarding sendMessage:', error)
+  async lookup(question: LookupQuestion): Promise<LookupAnswer | LookupFormula> {
+    if (question.service !== 'lsmessagebox') {
+      throw new Error('Unsupported lookup service')
     }
-
-    return null
-  }
-
-  public async lookup (query: { identityKey: string }): Promise<{ type: 'freeform', hosts: string[] }> {
-    const host = await this.resolveHost(query.identityKey)
-
-    if (host !== null && host !== '') {
-      return {
-        type: 'freeform',
-        hosts: [host]
-      }
+  
+    const query = question.query as { identityKey: string }
+  
+    if (!query?.identityKey) {
+      throw new Error('identityKey query missing')
     }
-
+  
+    const hosts = await this.storage.findHostsForIdentity(query.identityKey)
+  
     return {
       type: 'freeform',
-      hosts: []
+      result: { hosts }
     }
   }
+  
+
+  async getDocumentation(): Promise<string> {
+    return docs
+  }
+
+  async getMetaData(): Promise<{
+    name: string
+    shortDescription: string
+    iconURL?: string
+    version?: string
+    informationURL?: string
+  }> {
+    return {
+      name: 'MessageBox Lookup Service',
+      shortDescription: 'Lookup overlay hosts for identity keys (MessageBox)'
+    }
+  }
+}
+
+// Default export is the factory function expected by LARS
+export default (knex: Knex): MessageBoxLookupService => {
+  return new MessageBoxLookupService(new MessageBoxStorage(knex))
 }

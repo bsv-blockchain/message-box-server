@@ -24,9 +24,6 @@
     "resolveJsonModule": true,
     "esModuleInterop": true
   },
-  "files": [
-    "src/index.ts",
-  ],
   "include": [
     "src",
     "knexfile.ts",

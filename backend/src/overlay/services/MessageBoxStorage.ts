@@ -1,80 +1,64 @@
 import { Knex } from 'knex'
-import type { OverlayAdRow, Advertisement } from '../types.js'
 
 /**
- * MessageBoxStorage is responsible for persisting and retrieving advertisement data
- * from the `overlay_ads` table. It provides functionality to resolve the most recent
- * host for a given identity key and manage advertisement history.
+ * MessageBoxStorage provides a SHIP-compatible storage engine
+ * that maps identity keys to advertised hosts from overlay messages.
  */
 export class MessageBoxStorage {
-  constructor (private readonly knex: Knex) {}
+  constructor(private readonly knex: Knex) {}
 
   /**
-   * Retrieves the most recently anointed host for a specific identity key
-   * from the `overlay_ads` table.
-   *
-   * @param identityKey - The identity key to look up.
-   * @returns The most recent host URL or null if none is found.
+   * Stores a record received from a SHIP broadcast.
+   * Called by outputAdded() in LookupService.
    */
-  async getLatestHostFor (identityKey: string): Promise<string | null> {
-    const record = await this.knex<OverlayAdRow>('overlay_ads')
-      .where({ identitykey: identityKey })
-      .orderBy('created_at', 'desc')
-      .first()
-
-    return record?.host ?? null
-  }
-
-  /**
-   * Stores a new advertisement in the `overlay_ads` table.
-   *
-   * @param ad - An object containing identity key, host, timestamp, nonce, signature, and txid.
-   * @throws If the advertisement is missing a `txid`.
-   */
-  async storeAdvertisement (ad: {
-    identityKey: string
-    host: string
-    timestamp: string | Date
-    nonce: string
-    signature: string
-    txid?: string
-  }): Promise<void> {
-    if (ad.txid == null || ad.txid.trim() === '') {
-      throw new Error('Cannot store advertisement without txid.')
-    }
-
+  async storeRecord(
+    identityKey: string,
+    host: string,
+    txid: string,
+    outputIndex: number
+  ): Promise<void> {
     await this.knex('overlay_ads').insert({
-      identitykey: ad.identityKey,
-      host: ad.host,
-      timestamp: new Date(ad.timestamp),
-      nonce: ad.nonce,
-      signature: ad.signature,
-      txid: ad.txid,
+      identitykey: identityKey,
+      host,
+      txid,
+      output_index: outputIndex,
       created_at: new Date()
     })
   }
 
   /**
-   * Retrieves a list of the most recent advertisements stored in the `overlay_ads` table.
-   *
-   * @param limit - The maximum number of advertisements to return. Default is 20.
-   * @returns A list of recent Advertisement objects.
+   * Deletes a record when the corresponding output is spent or deleted.
    */
-  async listRecentAds (limit = 20): Promise<Advertisement[]> {
-    const rows = await this.knex<OverlayAdRow>('overlay_ads')
+  async deleteRecord(txid: string, outputIndex: number): Promise<void> {
+    await this.knex('overlay_ads')
+      .where({ txid, output_index: outputIndex })
+      .del()
+  }
+
+  /**
+   * Finds all known host advertisements for a given identityKey.
+   * Used in LookupService.lookup().
+   */
+  async findHostsForIdentity(identityKey: string): Promise<string[]> {
+    const rows = await this.knex('overlay_ads')
+      .select('host')
+      .where({ identitykey: identityKey })
       .orderBy('created_at', 'desc')
-      .limit(limit)
+
+    return rows.map(row => row.host)
+  }
+
+  /**
+   * Optional: Find all identity-to-host mappings for debugging or discovery.
+   */
+  async findAll(): Promise<{ identityKey: string, host: string }[]> {
+    const rows = await this.knex('overlay_ads')
+      .select('identitykey', 'host')
+      .orderBy('created_at', 'desc')
 
     return rows.map(row => ({
       identityKey: row.identitykey,
-      host: row.host,
-      timestamp: row.timestamp.toString(),
-      nonce: row.nonce,
-      signature: row.signature,
-      txid: row.txid,
-      created_at: row.created_at,
-      protocol: 'MBSERVEAD',
-      version: '1.0'
+      host: row.host
     }))
   }
 }
