@@ -1,16 +1,14 @@
 import { Request, Response } from 'express'
-import knexConfig from '../knexfile.js'
+import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
 import { PublicKey } from '@bsv/sdk'
 import { webcrypto } from 'crypto'
 import { Logger } from '../utils/logger.js'
-import createMessageBoxLookupService from '../overlay/services/MessageBoxLookupServiceFactory.js'
 
 (global as any).self = { crypto: webcrypto }
 
 const { NODE_ENV = 'development', SERVER_PRIVATE_KEY } = process.env
 
-// Initialize Knex using environment-based configuration
 const knex: knexLib.Knex = (knexLib as any).default?.(
   NODE_ENV === 'production' || NODE_ENV === 'staging'
     ? knexConfig.production
@@ -21,9 +19,6 @@ const knex: knexLib.Knex = (knexLib as any).default?.(
     : knexConfig.development
 )
 
-/**
- * Structure of a message sent between users via the overlay or local DB.
- */
 interface Message {
   recipient: string
   messageBox: string
@@ -31,19 +26,12 @@ interface Message {
   body: string
 }
 
-/**
- * Body format for /sendMessage requests.
- * Includes the actual message, an optional priority flag, and payment metadata.
- */
 interface SendMessageRequestBody {
   message?: Message
   priority?: boolean
   payment?: { satoshisPaid: number }
 }
 
-/**
- * Extended Express request with typed `auth` and `body` for internal usage.
- */
 interface SendMessageRequest extends Request {
   auth: { identityKey: string }
   body: SendMessageRequestBody
@@ -54,22 +42,13 @@ if (SERVER_PRIVATE_KEY == null || SERVER_PRIVATE_KEY.trim() === '') {
   throw new Error('SERVER_PRIVATE_KEY is not defined in the environment variables.')
 }
 
-/**
- * Calculates the cost of sending a message.
- * Longer messages and priority status increase the fee.
- */
 export function calculateMessagePrice (message: string, priority: boolean = false): number {
   const basePrice = 2 // Base fee in satoshis
-  const sizeFactor = Math.ceil(Buffer.byteLength(message, 'utf8') / 1024) * 3
+  const sizeFactor = Math.ceil(Buffer.byteLength(message, 'utf8') / 1024) * 3 // 50 satoshis per KB
 
   return basePrice + sizeFactor
 }
 
-/**
- * Express route definition for POST /sendMessage.
- * This route allows authenticated users to send messages to a recipient's message box.
- * It attempts to store the message locally or forwards it to an anointed host via the overlay if needed.
- */
 export default {
   type: 'post',
   path: '/sendMessage',
@@ -84,17 +63,15 @@ export default {
     }
   },
   exampleResponse: { status: 'success' },
+  // middleware: [paymentMiddleware], // Attach paymentMiddleware here
 
-  /**
-   * Core route handler for /sendMessage.
-   * Validates input, checks if recipient is local or remote, and stores or forwards accordingly.
-   */
   func: async (req: SendMessageRequest, res: Response): Promise<Response> => {
+    Logger.log('[DEBUG] Processing /sendMessage request...')
+    Logger.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
+    Logger.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2))
+
     try {
-      Logger.log('[DEBUG] Processing /sendMessage request...')
-      Logger.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
-      Logger.log('[DEBUG] Request Body:', JSON.stringify(req.body ?? {}, null, 2))
-      const { message } = req.body
+      const { message } = req.body // Ensure message is extracted properly
       if (message == null) {
         Logger.error('[ERROR] No message provided in request body!')
         return res.status(400).json({
@@ -137,34 +114,10 @@ export default {
         .first()
 
       if (messageBox == null) {
-        Logger.log('[DEBUG] No local messageBox found. Attempting overlay forward...')
-
-        const overlayService = createMessageBoxLookupService()
-
-        // 🔹 Destructure required fields from the message
-        const { messageId, recipient } = message
-        const sender = req.auth.identityKey
-
-        try {
-          const result = await overlayService.forwardMessage({ ...message, sender }, sender)
-
-          if (result?.forwarded === true) {
-            Logger.log(`[OVERLAY] Message forwarded to ${result.host ?? 'unknown host'}`)
-            return res.status(200).json({
-              status: 'success',
-              messageId,
-              forwarded: true,
-              remoteHost: result.host
-            })
-          }
-        } catch (err) {
-          Logger.warn('[OVERLAY] Forwarding failed:', err)
-        }
-
-        Logger.warn('[OVERLAY] Overlay unavailable. Creating local messageBox...')
+        Logger.log('[DEBUG] MessageBox not found, creating a new one...')
         await knex('messageBox').insert({
-          identityKey: recipient,
-          type: messageBox,
+          identityKey: message.recipient,
+          type: message.messageBox,
           created_at: new Date(),
           updated_at: new Date()
         })

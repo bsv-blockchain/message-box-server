@@ -7,7 +7,7 @@
   "lookupServices": {
     "lsmessagebox": {
       "serviceFactory": "./src/overlay/services/MessageBoxLookupService.ts",
-      "hydrateWith": "mongo"
+      "hydrateWith": "knex"
     }
   },
   "contracts": {
@@ -20,7 +20,7 @@
       "network": "local",
       "provider": "LARS",
       "run": ["backend"],
-      "spvSource": "mock"
+      "spvSource": "trust"
     },
     {
       "name": "atx",

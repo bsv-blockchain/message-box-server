@@ -23,30 +23,41 @@ class MessageBoxLookupService implements LookupService {
     topic: string
   ): Promise<void> {
     if (topic !== 'tm_messagebox') return
-
+  
     function hasBuf(chunk: unknown): chunk is { buf: Uint8Array } {
-      return !!chunk && typeof chunk === 'object' && chunk !== null && 'buf' in chunk && chunk.buf instanceof Uint8Array
+      return (
+        typeof chunk === 'object' &&
+        chunk !== null &&
+        'buf' in chunk &&
+        chunk['buf'] instanceof Uint8Array
+      )
     }
-    
+  
     try {
       const chunks = outputScript.chunks
-    
-      const hostsChunk = chunks.find(c => hasBuf(c) && Buffer.from(c.buf).toString().includes('http'))
-      const host = hostsChunk && hasBuf(hostsChunk) ? Buffer.from(hostsChunk.buf).toString() : null
-    
-      const keyChunk = chunks.find(c => hasBuf(c) && c.buf.length === 33)
-      const identityKey = keyChunk && hasBuf(keyChunk) ? Buffer.from(keyChunk.buf).toString('hex') : null
-    
+  
+      if (chunks.length < 2 || !hasBuf(chunks[1])) {
+        console.warn('[SHIP] OP_RETURN script missing expected payload chunk.')
+        return
+      }
+  
+      const hex = Buffer.from(chunks[1].buf).toString()
+      const json = JSON.parse(Buffer.from(hex, 'hex').toString('utf8'))
+  
+      const identityKey = json.identityKey
+      const host = json.host
+  
       if (!host || !identityKey) {
         console.warn(`[SHIP] Incomplete broadcast: host=${host}, key=${identityKey}`)
         return
       }
-    
+  
       await this.storage.storeRecord(identityKey, host, txid, outputIndex)
     } catch (e) {
       console.error('Error processing SHIP broadcast in MessageBox lookup:', e)
-    }    
+    }
   }
+  
 
   async outputSpent?(
     txid: string,
@@ -107,6 +118,9 @@ class MessageBoxLookupService implements LookupService {
 }
 
 // Default export is the factory function expected by LARS
-export default (knex: Knex): MessageBoxLookupService => {
-  return new MessageBoxLookupService(new MessageBoxStorage(knex))
+export default (knex: Knex) => {
+  return {
+    service: new MessageBoxLookupService(new MessageBoxStorage(knex)),
+    migrations: [] // You can add migration objects here later if needed
+  }
 }

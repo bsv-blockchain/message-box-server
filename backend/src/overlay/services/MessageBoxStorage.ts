@@ -1,20 +1,17 @@
-import { Knex } from 'knex'
 import knexModule from 'knex'
-import knexConfig from './knexfile.js' // Adjust path as needed
+import type { Knex } from 'knex'
+import knexConfig from './knexfile.js'
 
-const knex = knexModule.default ?? knexModule
+// ✅ Correct way to grab the actual function
+const createKnex = (knexModule as any).default ?? knexModule
 
 export class MessageBoxStorage {
   private readonly knex: Knex
 
   constructor(knexInstance?: Knex) {
-    if (knexInstance != null) {
-      this.knex = knexInstance
-    } else {
-      this.knex = knex(knexConfig.development)
-    }
+    this.knex = knexInstance ?? createKnex(knexConfig.development)
   }
-  
+
   /**
    * Stores a record received from a SHIP broadcast.
    * Called by outputAdded() in LookupService.

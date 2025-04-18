@@ -1,12 +1,9 @@
 import { Request, Response } from 'express'
-import knexConfig from '../knexfile.js'
+import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
-import createMessageBoxLookupService from '../overlay/services/MessageBoxLookupServiceFactory.js'
-import { Logger } from '../utils/logger.js'
 
 const { NODE_ENV = 'development' } = process.env
 
-// Initialize Knex based on environment
 const knex: knexLib.Knex = (knexLib as any).default?.(
   NODE_ENV === 'production' || NODE_ENV === 'staging'
     ? knexConfig.production
@@ -17,19 +14,11 @@ const knex: knexLib.Knex = (knexLib as any).default?.(
     : knexConfig.development
 )
 
-/**
- * Extended Express Request interface for the /listMessages route.
- *
- * Includes:
- * - `auth.identityKey`: Identity key extracted from the Authorization header.
- * - `body.messageBox`: The name of the messageBox to list messages from.
- */
 interface ListMessagesRequest extends Request {
   auth: { identityKey: string }
   body: { messageBox?: string }
 }
 
-// Exported route definition for listing messages from a messageBox.
 export default {
   type: 'post',
   path: '/listMessages',
@@ -48,19 +37,20 @@ export default {
       }
     ]
   },
-
-  /**
-   * Main handler function for the /listMessages route.
-   *
-   * Checks the local messageBox table for messages for the authenticated identityKey.
-   * Falls back to an overlay service if no local messageBox exists.
-   */
   func: async (req: ListMessagesRequest, res: Response): Promise<Response> => {
     try {
       const { messageBox } = req.body
-      const identityKey = req.auth.identityKey
 
-      if (typeof messageBox !== 'string' || messageBox.trim() === '') {
+      // Validate a messageBox is provided and is a string
+      if (messageBox == null || messageBox === '') {
+        return res.status(400).json({
+          status: 'error',
+          code: 'ERR_MESSAGEBOX_REQUIRED',
+          description: 'Please provide the name of a valid MessageBox!'
+        })
+      }
+
+      if (typeof messageBox !== 'string') {
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_MESSAGEBOX',
@@ -68,54 +58,37 @@ export default {
         })
       }
 
-      // Check for a local messageBox
+      // Get the ID of the messageBox
       const [messageBoxRecord] = await knex('messageBox')
         .where({
-          identityKey,
+          identityKey: req.auth.identityKey,
           type: messageBox
         })
         .select('messageBoxId')
 
-      if (messageBoxRecord !== undefined) {
-        // Local messageBox found — return messages
-        const messages = await knex('messages')
-          .where({
-            recipient: identityKey,
-            messageBoxId: messageBoxRecord.messageBoxId
-          })
-          .select('messageId', 'body', 'sender', 'created_at', 'updated_at')
-
+      // Validate a match was found
+      if (messageBoxRecord === undefined) {
         return res.status(200).json({
           status: 'success',
-          source: 'local',
-          messages
+          messages: []
         })
       }
 
-      // No local messageBox — check the overlay
-      Logger.log(`[OVERLAY] No local messageBox found for ${identityKey}. Checking overlay...`)
-
-      const overlayService = createMessageBoxLookupService()
-
-      const remoteMessages = await overlayService.listMessages(identityKey, messageBox)
-
-      if (remoteMessages != null) {
-        Logger.log(`[OVERLAY] Retrieved ${remoteMessages.length} remote messages.`)
-        return res.status(200).json({
-          status: 'success',
-          source: 'overlay',
-          messages: remoteMessages
+      // Get all messages from the specified messageBox
+      const messages = await knex('messages')
+        .where({
+          recipient: req.auth.identityKey,
+          messageBoxId: messageBoxRecord.messageBoxId
         })
-      }
+        .select('messageId', 'body', 'sender', 'created_at', 'updated_at')
 
-      Logger.warn(`[OVERLAY] No remote messageBox found or host unreachable for ${identityKey}.`)
+      // Return a list of matching messages
       return res.status(200).json({
         status: 'success',
-        source: 'none',
-        messages: []
+        messages
       })
     } catch (e) {
-      Logger.error('[listMessages ERROR]', e)
+      console.error(e)
       return res.status(500).json({
         status: 'error',
         code: 'ERR_INTERNAL_ERROR',
