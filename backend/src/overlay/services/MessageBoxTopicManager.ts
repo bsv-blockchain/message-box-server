@@ -1,63 +1,47 @@
-import { AdmittanceInstructions, TopicManager } from '@bsv/overlay'
-import { Transaction, ProtoWallet, Utils } from '@bsv/sdk'
+import { PushDrop, ProtoWallet, Utils, Transaction } from '@bsv/sdk'
+import type { AdmittanceInstructions, TopicManager } from '@bsv/overlay'
 import docs from './MessageBoxTopicDocs.md.js'
-import type { Advertisement } from '../types.js'
 
 const anyoneWallet = new ProtoWallet('anyone')
 
-/**
- * MessageBoxTopicManager handles validation of SHIP advertisements
- * on the `tm_messagebox` topic.
- */
 export default class MessageBoxTopicManager implements TopicManager {
-  /**
-   * Validates SHIP advertisement outputs and determines which should be admitted.
-   */
   async identifyAdmissibleOutputs(
     beef: number[],
     previousCoins: number[]
   ): Promise<AdmittanceInstructions> {
     const outputsToAdmit: number[] = []
 
-    try {
-      const parsedTx = Transaction.fromBEEF(beef)
+    const tx = Transaction.fromBEEF(beef)
 
-      for (const [i, output] of parsedTx.outputs.entries()) {
-        try {
-          const asm = output.lockingScript.toASM()
-          const jsonStr = asm.split(' ').pop() ?? ''
-          const ad = JSON.parse(jsonStr) as Advertisement
+    for (const [i, output] of tx.outputs.entries()) {
+      try {
+        const result = PushDrop.decode(output.lockingScript)
 
-          if (
-            typeof ad.identityKey !== 'string' || ad.identityKey.trim() === '' ||
-            typeof ad.host !== 'string' || ad.host.trim() === '' ||
-            typeof ad.signature !== 'string' || ad.signature.trim() === ''
-          ) {
-            continue
-          }
+        // Extract signature (last field), and rest are data
+        const signature = result.fields.pop() as number[]
+        const [identityKeyBuf, hostBuf, timestampBuf, nonceBuf] = result.fields
 
-          const isValid = await anyoneWallet.verifySignature({
-            protocolID: [0, 'MBSERVEAD'],
-            keyID: '1',
-            counterparty: ad.identityKey,
-            data: [
-              ...Utils.toArray(ad.host, 'utf8'),
-              ...Utils.toArray(ad.timestamp, 'utf8'),
-              ...Utils.toArray(ad.nonce, 'utf8')
-            ],
-            signature: Utils.toArray(ad.signature, 'hex')
-          })
+        const identityKey = Utils.toUTF8(identityKeyBuf)
+        const host = Utils.toUTF8(hostBuf)
+        const timestamp = Utils.toUTF8(timestampBuf)
+        const nonce = Utils.toUTF8(nonceBuf)
 
-          if (isValid.valid !== true) continue
+        const data = [...hostBuf, ...timestampBuf, ...nonceBuf]
 
+        const { valid } = await anyoneWallet.verifySignature({
+          data,
+          signature,
+          counterparty: identityKey,
+          protocolID: [0, 'MBSERVEAD'],
+          keyID: '1'
+        })
+
+        if (valid) {
           outputsToAdmit.push(i)
-        } catch {
-          continue // Ignore and skip malformed outputs
         }
+      } catch (e) {
+        console.warn(`Skipping output ${i} due to decode/verify failure:`, e)
       }
-    } catch (err) {
-      const beefStr = JSON.stringify(beef, null, 2)
-      throw new Error(`Error validating outputs: ${err instanceof Error ? err.message : String(err)}\nBEEF:\n${beefStr}`)
     }
 
     return {
@@ -66,32 +50,17 @@ export default class MessageBoxTopicManager implements TopicManager {
     }
   }
 
-  /**
-   * Provides markdown documentation for this overlay topic.
-   */
   async getDocumentation(): Promise<string> {
     return docs
   }
 
-  /**
-   * Provides metadata for UI and overlay tooling.
-   */
-  async getMetaData(): Promise<{
-    name: string
-    shortDescription: string
-    iconURL?: string
-    version?: string
-    informationURL?: string
-  }> {
+  async getMetaData() {
     return {
       name: 'MessageBox Topic Manager',
       shortDescription: 'Advertises and validates hosts for message routing.'
     }
-  }  
-  
-  /**
-  * Provides a list of topics that this manager is responsible for.
-  */
+  }
+
   getTopics(): string[] {
     return ['tm_messagebox']
   }

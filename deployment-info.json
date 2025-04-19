@@ -17,7 +17,7 @@
   "configs": [
     {
       "name": "Local LARS",
-      "network": "local",
+      "network": "mainnet",
       "provider": "LARS",
       "run": ["backend"],
       "spvSource": "trust"

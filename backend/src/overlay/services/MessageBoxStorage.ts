@@ -2,8 +2,11 @@ import knexModule from 'knex'
 import type { Knex } from 'knex'
 import knexConfig from './knexfile.js'
 
-// ✅ Correct way to grab the actual function
 const createKnex = (knexModule as any).default ?? knexModule
+
+function formatMySQLDate(date: string | Date): string {
+  return new Date(date).toISOString().slice(0, 19).replace('T', ' ')
+}
 
 export class MessageBoxStorage {
   private readonly knex: Knex
@@ -20,14 +23,22 @@ export class MessageBoxStorage {
     identityKey: string,
     host: string,
     txid: string,
-    outputIndex: number
+    outputIndex: number,
+    timestamp: string,
+    nonce: string,
+    signature: string,
+    raw_advertisement: object
   ): Promise<void> {
     await this.knex('overlay_ads').insert({
       identitykey: identityKey,
       host,
       txid,
       output_index: outputIndex,
-      created_at: new Date()
+      timestamp: formatMySQLDate(timestamp),
+      nonce,
+      signature,
+      raw_advertisement: JSON.stringify(raw_advertisement),
+      created_at: formatMySQLDate(new Date())
     })
   }
 
@@ -46,14 +57,30 @@ export class MessageBoxStorage {
     return rows.map(row => row.host)
   }
 
-  async findAll(): Promise<{ identityKey: string, host: string }[]> {
+  async findAll(): Promise<{ identityKey: string, host: string, timestamp?: string, nonce?: string }[]> {
     const rows = await this.knex('overlay_ads')
-      .select('identitykey', 'host')
+      .select('identitykey', 'host', 'timestamp', 'nonce')
       .orderBy('created_at', 'desc')
 
     return rows.map(row => ({
-      identityKey: row.identitykey,
-      host: row.host
+      identityKey: row.identitykey as string,
+      host: row.host as string,
+      timestamp: row.timestamp as string | undefined,
+      nonce: row.nonce as string | undefined
+    }))
+  }
+
+  async findRecent(limit = 10): Promise<{ identityKey: string, host: string, timestamp?: string, nonce?: string }[]> {
+    const rows = await this.knex('overlay_ads')
+      .select('identitykey', 'host', 'timestamp', 'nonce')
+      .orderBy('created_at', 'desc')
+      .limit(limit)
+
+    return rows.map(row => ({
+      identityKey: row.identitykey as string,
+      host: row.host as string,
+      timestamp: row.timestamp as string | undefined,
+      nonce: row.nonce as string | undefined
     }))
   }
 }

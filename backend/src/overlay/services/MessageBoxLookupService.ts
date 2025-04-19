@@ -6,7 +6,7 @@ import {
 } from '@bsv/overlay'
 
 import { MessageBoxStorage } from './MessageBoxStorage.js'
-import { Script } from '@bsv/sdk'
+import { ProtoWallet, PushDrop, Script, Utils } from '@bsv/sdk'
 import docs from './MessageBoxLookupDocs.md.js'
 import { Knex } from 'knex'
 
@@ -16,48 +16,41 @@ import { Knex } from 'knex'
 class MessageBoxLookupService implements LookupService {
   constructor(public storage: MessageBoxStorage) {}
 
-  async outputAdded?(
-    txid: string,
-    outputIndex: number,
-    outputScript: Script,
-    topic: string
-  ): Promise<void> {
-    if (topic !== 'tm_messagebox') return
-  
-    function hasBuf(chunk: unknown): chunk is { buf: Uint8Array } {
-      return (
-        typeof chunk === 'object' &&
-        chunk !== null &&
-        'buf' in chunk &&
-        chunk['buf'] instanceof Uint8Array
-      )
-    }
+  /**
+   * Notifies the lookup service of a new output added.
+   */
+  async outputAdded?(txid: string, outputIndex: number, outputScript: Script, topic: string): Promise<void> {
+    if (topic !== 'tm_messagebox') return;
   
     try {
-      const chunks = outputScript.chunks
+      const decoded = PushDrop.decode(outputScript);
+      const [identityKeyBuf, hostBuf, timestampBuf, nonceBuf] = decoded.fields;
+      const signatureBuf = decoded.fields.at(-1)!;
   
-      if (chunks.length < 2 || !hasBuf(chunks[1])) {
-        console.warn('[SHIP] OP_RETURN script missing expected payload chunk.')
-        return
-      }
+      const ad = {
+        identityKey: Utils.toUTF8(identityKeyBuf),
+        host: Utils.toUTF8(hostBuf),
+        timestamp: Utils.toUTF8(timestampBuf),
+        nonce: Utils.toUTF8(nonceBuf),
+        signature: Utils.toHex(signatureBuf) // Store as hex
+      };
   
-      const hex = Buffer.from(chunks[1].buf).toString()
-      const json = JSON.parse(Buffer.from(hex, 'hex').toString('utf8'))
+      console.log('[LOOKUP] Decoded advertisement:', ad);
   
-      const identityKey = json.identityKey
-      const host = json.host
-  
-      if (!host || !identityKey) {
-        console.warn(`[SHIP] Incomplete broadcast: host=${host}, key=${identityKey}`)
-        return
-      }
-  
-      await this.storage.storeRecord(identityKey, host, txid, outputIndex)
+      await this.storage.storeRecord(
+        ad.identityKey,
+        ad.host,
+        txid,
+        outputIndex,
+        ad.timestamp,
+        ad.nonce,
+        ad.signature,
+        ad
+      );
     } catch (e) {
-      console.error('Error processing SHIP broadcast in MessageBox lookup:', e)
+      console.error('[LOOKUP ERROR] Failed to process outputAdded:', e);
     }
   }
-  
 
   async outputSpent?(
     txid: string,
@@ -79,25 +72,27 @@ class MessageBoxLookupService implements LookupService {
     }
   }
 
+  /**
+   * Answers a lookup query
+   */
   async lookup(question: LookupQuestion): Promise<LookupAnswer | LookupFormula> {
     if (question.service !== 'lsmessagebox') {
       throw new Error('Unsupported lookup service')
     }
-  
+
     const query = question.query as { identityKey: string }
-  
+
     if (!query?.identityKey) {
       throw new Error('identityKey query missing')
     }
-  
+
     const hosts = await this.storage.findHostsForIdentity(query.identityKey)
-  
+
     return {
       type: 'freeform',
       result: { hosts }
     }
   }
-  
 
   async getDocumentation(): Promise<string> {
     return docs
@@ -121,6 +116,6 @@ class MessageBoxLookupService implements LookupService {
 export default (knex: Knex) => {
   return {
     service: new MessageBoxLookupService(new MessageBoxStorage(knex)),
-    migrations: [] // You can add migration objects here later if needed
+    migrations: []
   }
 }
