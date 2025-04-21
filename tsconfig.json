@@ -34,5 +34,6 @@
   ],
   "exclude": [
     "dist",
+    "**/*.test.ts",
   ]
 }

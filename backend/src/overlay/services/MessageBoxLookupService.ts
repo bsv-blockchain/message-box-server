@@ -9,6 +9,10 @@ import { MessageBoxStorage } from './MessageBoxStorage.js'
 import { ProtoWallet, PushDrop, Script, Utils } from '@bsv/sdk'
 import docs from './MessageBoxLookupDocs.md.js'
 import { Knex } from 'knex'
+// import * as migration1 from '../../migrations/2022-12-28-001-initial-migration.js'
+// import * as migration2 from '../../migrations/2025-04-01-001-create-overlay-ads.js'
+// import * as migration3 from '../../migrations/2023-01-17-messages-update.js'
+// import * as migration4 from '../../migrations/2024-03-05-001-messageID-upgrade.js'
 
 /**
  * Implements a MessageBox overlay lookup service for use with SHIP
@@ -116,6 +120,6 @@ class MessageBoxLookupService implements LookupService {
 export default (knex: Knex) => {
   return {
     service: new MessageBoxLookupService(new MessageBoxStorage(knex)),
-    migrations: []
+    migrations: []                                                    
   }
 }

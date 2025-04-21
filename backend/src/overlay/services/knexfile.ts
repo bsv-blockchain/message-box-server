@@ -1,6 +1,13 @@
+// backend/src/overlay/services/knexfile.ts
+import { fileURLToPath } from 'url'
+import path from 'path'
 import dotenv from 'dotenv'
 import type { Knex } from 'knex'
+
 dotenv.config()
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 const connectionConfig = process.env.KNEX_DB_CONNECTION != null && process.env.KNEX_DB_CONNECTION.trim() !== ''
   ? JSON.parse(process.env.KNEX_DB_CONNECTION)
@@ -11,7 +18,7 @@ const config: Knex.Config = {
   connection: connectionConfig,
   useNullAsDefault: true,
   migrations: {
-    directory: './out/src/migrations'
+    directory: path.resolve(__dirname, '../../../migrations')
   },
   pool: {
     min: 0,
