@@ -47,33 +47,69 @@ export default class MessageBoxTopicManager implements TopicManager {
     for (const [i, output] of tx.outputs.entries()) {
       try {
         const result = PushDrop.decode(output.lockingScript)
-
+    
         // Extract signature (last field), and rest are data
         const signature = result.fields.pop() as number[]
         const [identityKeyBuf, hostBuf, timestampBuf, nonceBuf] = result.fields
-
+    
+        // Basic admissibility checks before processing
+        if (
+          !identityKeyBuf || !hostBuf || !timestampBuf || !nonceBuf ||
+          identityKeyBuf.length === 0 || hostBuf.length === 0 ||
+          timestampBuf.length === 0 || nonceBuf.length === 0
+        ) {
+          console.warn(`[ADMISSIBILITY] Output ${i} skipped due to empty field(s)`)
+          continue
+        }
+    
+        // Optional stricter checks (e.g., timestamp is a valid ISO string)
+        let host: string, timestamp: string, nonce: string
+        try {
+          host = Utils.toUTF8(hostBuf)
+          timestamp = Utils.toUTF8(timestampBuf)
+          nonce = Utils.toUTF8(nonceBuf)
+    
+          // Optional format validations
+          if (!host.includes('.') || host.length > 255) {
+            console.warn(`[ADMISSIBILITY] Output ${i} skipped due to invalid host:`, host)
+            continue
+          }
+    
+          if (isNaN(Date.parse(timestamp))) {
+            console.warn(`[ADMISSIBILITY] Output ${i} skipped due to invalid timestamp:`, timestamp)
+            continue
+          }
+    
+          if (nonce.length > 128) {
+            console.warn(`[ADMISSIBILITY] Output ${i} skipped due to oversized nonce`)
+            continue
+          }
+        } catch {
+          console.warn(`[ADMISSIBILITY] Output ${i} skipped due to UTF-8 decoding failure`)
+          continue
+        }
+    
         const identityKey = Utils.toUTF8(identityKeyBuf)
-        const host = Utils.toUTF8(hostBuf)
-        const timestamp = Utils.toUTF8(timestampBuf)
-        const nonce = Utils.toUTF8(nonceBuf)
-
         const data = [...hostBuf, ...timestampBuf, ...nonceBuf]
-
+    
         const { valid } = await anyoneWallet.verifySignature({
           data,
           signature,
           counterparty: identityKey,
-          protocolID: [0, 'MBSERVEAD'],
+          protocolID: [1, 'messagebox advertisement'],
           keyID: '1'
         })
-
+    
         if (valid) {
           outputsToAdmit.push(i)
+        } else {
+          console.warn(`[SIGNATURE] Output ${i} failed signature verification`)
         }
       } catch (e) {
-        console.warn(`Skipping output ${i} due to decode/verify failure:`, e)
+        console.warn(`[DECODE ERROR] Skipping output ${i} due to exception:`, e)
       }
     }
+    
 
     return {
       outputsToAdmit,

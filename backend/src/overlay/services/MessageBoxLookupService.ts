@@ -111,7 +111,7 @@ class MessageBoxLookupService implements LookupService {
    * @returns A `LookupAnswer` with the host information or a `LookupFormula` if dynamic.
    */
   async lookup(question: LookupQuestion): Promise<LookupAnswer | LookupFormula> {
-    if (question.service !== 'lsmessagebox') {
+    if (question.service !== 'ls_messagebox') {
       throw new Error('Unsupported lookup service')
     }
 
