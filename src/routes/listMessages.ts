@@ -1,7 +1,14 @@
+/**
+ * @file listMessages.ts
+ * @description Route handler to list messages from a specific messageBox for the authenticated user.
+ * This endpoint allows clients to retrieve all messages stored in a named messageBox.
+ */
+
 import { Request, Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
 
+// Load the appropriate Knex configuration based on the environment
 const { NODE_ENV = 'development' } = process.env
 
 const knex: knexLib.Knex = (knexLib as any).default?.(
@@ -14,6 +21,11 @@ const knex: knexLib.Knex = (knexLib as any).default?.(
     : knexConfig.development
 )
 
+/**
+ * @interface ListMessagesRequest
+ * @extends Request
+ * @description Extends Express Request to include `auth` identity and expected `messageBox` body property.
+ */
 interface ListMessagesRequest extends Request {
   auth: { identityKey: string }
   body: { messageBox?: string }
@@ -37,6 +49,10 @@ export default {
       }
     ]
   },
+  /**
+   * @function func
+   * @description Main route handler for listing messages in a specified messageBox for the authenticated identity.
+   */
   func: async (req: ListMessagesRequest, res: Response): Promise<Response> => {
     try {
       const { messageBox } = req.body
@@ -58,7 +74,7 @@ export default {
         })
       }
 
-      // Get the ID of the messageBox
+      // Find the messageBox ID for this user
       const [messageBoxRecord] = await knex('messageBox')
         .where({
           identityKey: req.auth.identityKey,
@@ -66,7 +82,7 @@ export default {
         })
         .select('messageBoxId')
 
-      // Validate a match was found
+      // Return empty array if no messageBox was found
       if (messageBoxRecord === undefined) {
         return res.status(200).json({
           status: 'success',
@@ -74,7 +90,7 @@ export default {
         })
       }
 
-      // Get all messages from the specified messageBox
+      // Retrieve all messages associated with the messageBox
       const messages = await knex('messages')
         .where({
           recipient: req.auth.identityKey,

@@ -1,10 +1,41 @@
+/**
+ * MessageBox Topic Manager
+ * 
+ * Implements a TopicManager for the SHIP overlay system. This class validates
+ * `tm_messagebox` advertisements to determine which outputs should be admitted
+ * as valid MessageBox host records.
+ * 
+ * An advertisement is deemed admissible if its PushDrop-encoded fields contain:
+ * - An identity key
+ * - A host
+ * - A timestamp
+ * - A nonce
+ * - A valid signature over [host + timestamp + nonce] from the identity key
+ * 
+ * @module MessageBoxTopicManager
+ */
+
 import { PushDrop, ProtoWallet, Utils, Transaction } from '@bsv/sdk'
 import type { AdmittanceInstructions, TopicManager } from '@bsv/overlay'
 import docs from './MessageBoxTopicDocs.md.js'
 
+/**
+ * Wallet used to verify advertisement signatures from anyone.
+ */
 const anyoneWallet = new ProtoWallet('anyone')
 
+/**
+ * Validates `tm_messagebox` outputs in SHIP transactions by checking signatures
+ * and structure of PushDrop-encoded advertisements.
+ */
 export default class MessageBoxTopicManager implements TopicManager {
+  /**
+   * Verifies outputs from a transaction and determines which are admissible.
+   * 
+   * @param beef - The serialized transaction (AtomicBEEF) as a byte array.
+   * @param previousCoins - Previous outputs to retain (not modified).
+   * @returns A list of admissible outputs and retained coins.
+   */
   async identifyAdmissibleOutputs(
     beef: number[],
     previousCoins: number[]
@@ -50,10 +81,16 @@ export default class MessageBoxTopicManager implements TopicManager {
     }
   }
 
+  /**
+   * Returns a Markdown string with documentation for this topic manager.
+   */
   async getDocumentation(): Promise<string> {
     return docs
   }
 
+  /**
+   * Returns metadata used by SHIP dashboards or discovery tools.
+   */
   async getMetaData() {
     return {
       name: 'MessageBox Topic Manager',
@@ -61,6 +98,9 @@ export default class MessageBoxTopicManager implements TopicManager {
     }
   }
 
+  /**
+   * Returns the topics supported by this TopicManager.
+   */
   getTopics(): string[] {
     return ['tm_messagebox']
   }

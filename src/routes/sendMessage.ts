@@ -1,3 +1,9 @@
+/**
+ * @file sendMessage.ts
+ * @description Route handler to send a message to a specific messageBox belonging to another user.
+ * This endpoint allows one identity to send a message to another, optionally enforcing payment and ID validation.
+ */
+
 import { Request, Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
@@ -7,8 +13,10 @@ import { Logger } from '../utils/logger.js'
 
 (global as any).self = { crypto: webcrypto }
 
+// Determine the environment (default to development)
 const { NODE_ENV = 'development', SERVER_PRIVATE_KEY } = process.env
 
+// Load the appropriate Knex configuration based on the environment
 const knex: knexLib.Knex = (knexLib as any).default?.(
   NODE_ENV === 'production' || NODE_ENV === 'staging'
     ? knexConfig.production
@@ -19,6 +27,7 @@ const knex: knexLib.Knex = (knexLib as any).default?.(
     : knexConfig.development
 )
 
+// Type definition for the incoming message format
 interface Message {
   recipient: string
   messageBox: string
@@ -26,29 +35,36 @@ interface Message {
   body: string
 }
 
+// Expected request body structure
 interface SendMessageRequestBody {
   message?: Message
   priority?: boolean
   payment?: { satoshisPaid: number }
 }
 
+// Extended Express request type with authentication
 interface SendMessageRequest extends Request {
   auth: { identityKey: string }
   body: SendMessageRequestBody
 }
 
-// Ensure SERVER_PRIVATE_KEY is available
+// Validate critical server-side secret
 if (SERVER_PRIVATE_KEY == null || SERVER_PRIVATE_KEY.trim() === '') {
   throw new Error('SERVER_PRIVATE_KEY is not defined in the environment variables.')
 }
 
+/**
+ * @function calculateMessagePrice
+ * @description Determines the price (in satoshis) to send a message, optionally with priority.
+ */
 export function calculateMessagePrice (message: string, priority: boolean = false): number {
   const basePrice = 2 // Base fee in satoshis
-  const sizeFactor = Math.ceil(Buffer.byteLength(message, 'utf8') / 1024) * 3 // 50 satoshis per KB
+  const sizeFactor = Math.ceil(Buffer.byteLength(message, 'utf8') / 1024) * 3 // Satoshis per KB
 
   return basePrice + sizeFactor
 }
 
+// Export the route
 export default {
   type: 'post',
   path: '/sendMessage',
@@ -63,15 +79,19 @@ export default {
     }
   },
   exampleResponse: { status: 'success' },
-  // middleware: [paymentMiddleware], // Attach paymentMiddleware here
 
+  /**
+   * @function func
+   * @description Main request handler for sending a message to another identity's message box.
+   */
   func: async (req: SendMessageRequest, res: Response): Promise<Response> => {
     Logger.log('[DEBUG] Processing /sendMessage request...')
     Logger.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
     Logger.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2))
 
     try {
-      const { message } = req.body // Ensure message is extracted properly
+      const { message } = req.body
+      // Validate presence and structure of the message
       if (message == null) {
         Logger.error('[ERROR] No message provided in request body!')
         return res.status(400).json({
@@ -81,7 +101,7 @@ export default {
         })
       }
 
-      // **Validate Message Structure**
+      // Validate message structure
       if (message == null || typeof message !== 'object') {
         return res.status(400).json({ status: 'error', code: 'ERR_INVALID_MESSAGE', description: 'Invalid message structure.' })
       }
@@ -98,6 +118,7 @@ export default {
         return res.status(400).json({ status: 'error', code: 'ERR_INVALID_MESSAGE_BODY', description: 'Invalid message body.' })
       }
 
+      // Confirm the recipient key is a valid public key
       Logger.log('[DEBUG] Validating recipient key:', message.recipient)
       try {
         PublicKey.fromString(message.recipient)
@@ -108,7 +129,7 @@ export default {
 
       Logger.log(`[DEBUG] Storing message for recipient: ${message.recipient}`)
 
-      // **Retrieve or Create MessageBox**
+      // Retrieve or create the messageBox for the recipient
       let messageBox = await knex('messageBox')
         .where({ identityKey: message.recipient, type: message.messageBox })
         .first()
@@ -123,16 +144,16 @@ export default {
         })
       }
 
-      // **Get the messageBoxId**
+      // Re-fetch to get messageBoxId
       messageBox = await knex('messageBox')
         .where({ identityKey: message.recipient, type: message.messageBox })
         .select('messageBoxId')
         .first()
 
-      // **Insert the message into the messages table**
+      // Insert the message into the DB
       Logger.log('[DEBUG] Inserting message into messages table...')
       try {
-        const messageBoxId = messageBox?.messageBoxId ?? null // Ensure valid messageBoxId
+        const messageBoxId = messageBox?.messageBoxId ?? null
 
         await knex('messages')
           .insert({
@@ -144,8 +165,8 @@ export default {
             created_at: new Date(),
             updated_at: new Date()
           })
-          .onConflict('messageId') // If `messageId` already exists...
-          .ignore() // Ignore the duplicate error
+          .onConflict('messageId')
+          .ignore()
       } catch (error) {
         if ((error as any).code === 'ER_DUP_ENTRY') {
           return res.status(400).json({ status: 'error', code: 'ERR_DUPLICATE_MESSAGE', description: 'Duplicate message.' })

@@ -1,3 +1,9 @@
+/**
+ * @file app.ts
+ * @description Main application bootstrapper for MessageBoxServer.
+ * Sets up Express middleware, routes, and initializes the wallet client.
+ */
+
 import * as dotenv from 'dotenv'
 import express, {
   Express,
@@ -17,8 +23,10 @@ import type { WalletInterface } from '@bsv/sdk'
 
 dotenv.config()
 
+// Create the Express app instance
 export const app: Express = express()
 
+// Load environment variables
 const {
   NODE_ENV = 'development',
   ROUTING_PREFIX = '',
@@ -26,10 +34,12 @@ const {
   WALLET_STORAGE_URL
 } = process.env
 
+// Enable logger in dev mode or if explicitly enabled
 if (NODE_ENV === 'development' || process.env.LOGGING_ENABLED === 'true') {
   Logger.enable()
 }
 
+// Initialize Knex instance based on environment
 export const knex: Knex = (knexLib as any).default?.(
   NODE_ENV === 'production' || NODE_ENV === 'staging'
     ? knexConfig.production
@@ -40,12 +50,17 @@ export const knex: Knex = (knexLib as any).default?.(
     : knexConfig.development
 )
 
+// Wallet initialization logic
 let _wallet: WalletInterface | undefined
 let _resolveReady: () => void
 export const walletReady = new Promise<void>((resolve) => {
   _resolveReady = resolve
 })
 
+/**
+ * @function initializeWallet
+ * @description Creates the WalletClient from env variables for later use in message handling.
+ */
 export async function initializeWallet (): Promise<void> {
   if (SERVER_PRIVATE_KEY == null || SERVER_PRIVATE_KEY.trim() === '') {
     throw new Error('SERVER_PRIVATE_KEY is not defined in environment variables.')
@@ -60,6 +75,11 @@ export async function initializeWallet (): Promise<void> {
   _resolveReady()
 }
 
+/**
+ * @function getWallet
+ * @returns {Promise<WalletInterface>}
+ * @throws If the wallet has not been initialized yet.
+ */
 export async function getWallet (): Promise<WalletInterface> {
   await walletReady
   if (_wallet == null) {
@@ -68,12 +88,18 @@ export async function getWallet (): Promise<WalletInterface> {
   return _wallet
 }
 
+// Run on app startup to prep wallet and activate routes
 export const appReady = (async () => {
   await initializeWallet()
   useRoutes()
 })()
 
+/**
+ * @function useRoutes
+ * @description Mounts middleware and routes, including pre-auth and post-auth routes.
+ */
 export function useRoutes (): void {
+  // Parse incoming JSON bodies with a high limit
   app.use(bodyParser.json({ limit: '1gb', type: 'application/json' }))
 
   // CORS setup
@@ -91,7 +117,7 @@ export function useRoutes (): void {
     }
   })
 
-  // Inject test-safe identityKey from Authorization header
+  // Automatically inject identityKey from Authorization header (for internal auth handling)
   app.use((req, res, next) => {
     const identityKey = req.get('Authorization')
     if (identityKey != null && identityKey.trim() !== '') {
@@ -101,7 +127,7 @@ export function useRoutes (): void {
     next()
   })
 
-  // Pre-auth routes
+  // Register pre-authentication routes (no auth required)
   preAuth.forEach((route) => {
     app[route.type as 'get' | 'post' | 'put' | 'delete'](
       `${String(ROUTING_PREFIX)}${String(route.path)}`,
@@ -109,7 +135,7 @@ export function useRoutes (): void {
     )
   })
 
-  // Post-auth routes
+  // Register post-authentication routes (requires auth header)
   postAuth.forEach((route) => {
     if (route.path === '/sendMessage') {
       app[route.type as 'get' | 'post' | 'put' | 'delete'](

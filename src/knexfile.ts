@@ -6,8 +6,8 @@ import type { Knex } from 'knex'
 
 dotenv.config()
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+const fileName = fileURLToPath(import.meta.url)
+const dirName = path.dirname(fileName)
 
 const connectionConfig = process.env.KNEX_DB_CONNECTION != null && process.env.KNEX_DB_CONNECTION.trim() !== ''
   ? JSON.parse(process.env.KNEX_DB_CONNECTION)
@@ -18,7 +18,7 @@ const config: Knex.Config = {
   connection: connectionConfig,
   useNullAsDefault: true,
   migrations: {
-    directory: path.resolve(__dirname, './migrations')
+    directory: path.resolve(dirName, './migrations')
   },
   pool: {
     min: 0,

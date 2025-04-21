@@ -1,3 +1,10 @@
+/**
+ * @file index.ts
+ * @description Entry point for the MessageBox Server.
+ * Boots the HTTP + WebSocket server, initializes authentication,
+ * and handles live message routing and persistence.
+ */
+
 import * as dotenv from 'dotenv'
 import { app, appReady, getWallet, knex } from './app.js'
 import { spawn } from 'child_process'
@@ -11,6 +18,7 @@ import { AuthSocketServer } from '@bsv/authsocket'
 
 dotenv.config()
 
+// Load environment variables
 const {
   NODE_ENV = 'development',
   PORT,
@@ -23,7 +31,7 @@ if (NODE_ENV === 'development' || process.env.LOGGING_ENABLED === 'true') {
   Logger.enable()
 }
 
-// Ensure PORT is properly handled
+// Determine which port to listen on
 const parsedPort = Number(PORT)
 const parsedEnvPort = Number(process.env.HTTP_PORT)
 
@@ -35,7 +43,7 @@ const HTTP_PORT: number = NODE_ENV !== 'development'
           ? parsedEnvPort
           : 8080
 
-// Initialize Wallet for Authentication
+// Ensure private key is available before proceeding
 if (SERVER_PRIVATE_KEY === undefined || SERVER_PRIVATE_KEY === null || SERVER_PRIVATE_KEY.trim() === '') {
   throw new Error('SERVER_PRIVATE_KEY is not defined in the environment variables.')
 }
@@ -47,6 +55,10 @@ const http = createServer(app)
 // WebSocket setup (only if enabled)
 let io: AuthSocketServer | null = null
 
+/**
+ * @function start
+ * @description Launches the WebSocket server, sets up authentication and routing handlers.
+ */
 export const start = async (): Promise<void> => {
   await appReady
 
@@ -66,6 +78,7 @@ export const start = async (): Promise<void> => {
     io.on('connection', (socket) => {
       Logger.log('[WEBSOCKET] New connection established.')
 
+      // Handle immediate authentication if identityKey is available
       if (typeof socket.identityKey === 'string' && socket.identityKey.trim() !== '') {
         try {
           const parsedIdentityKey = PublicKey.fromString(socket.identityKey)
@@ -80,6 +93,7 @@ export const start = async (): Promise<void> => {
           Logger.error('[ERROR] Failed to parse WebSocket identity key:', error)
         }
       } else {
+        // Wait for 'authenticated' event if identityKey was not in handshake
         Logger.warn('[WARN] WebSocket connection received without identity key. Waiting for authentication...')
 
         let identityKeyHandled = false
@@ -119,7 +133,7 @@ export const start = async (): Promise<void> => {
         socket.on('authenticated', authListener)
       }
 
-      // Re-adding Send Message Handling
+      // Handle sendMessage over WebSocket
       socket.on(
         'sendMessage',
         async (data: { roomId: string, message: { messageId: string, recipient: string, body: string } }): Promise<void> => {
@@ -249,7 +263,7 @@ export const start = async (): Promise<void> => {
         }
       )
 
-      // Re-adding Join Room Handling
+      // Handle joining/leaving rooms
       socket.on('joinRoom', async (roomId: string) => {
         if (!authenticatedSockets.has(socket.id)) {
           Logger.warn('[WEBSOCKET] Unauthorized attempt to join a room.')
@@ -284,6 +298,7 @@ export const start = async (): Promise<void> => {
         await socket.emit('leftRoom', { roomId })
       })
 
+      // Clean up on disconnect
       socket.on('disconnect', (reason: string) => {
         Logger.log(`[WEBSOCKET] Disconnected: ${reason}`)
         authenticatedSockets.delete(socket.id)
@@ -292,12 +307,14 @@ export const start = async (): Promise<void> => {
   }
 }
 
+// Export for testing and CLI use
 export { io, http, HTTP_PORT, ROUTING_PREFIX }
 
+// Delay helper
 const delay = async (ms: number): Promise<void> =>
   await new Promise(resolve => setTimeout(resolve, ms))
 
-// Prevent server + migrations from running in tests
+// Only run server if not in test mode
 if (NODE_ENV !== 'test') {
   http.listen(HTTP_PORT, () => {
     Logger.log('MessageBox listening on port', HTTP_PORT)
@@ -309,6 +326,7 @@ if (NODE_ENV !== 'test') {
       spawn('nginx', [], { stdio: ['inherit', 'inherit', 'inherit'] })
     }
 
+    // Delay before running DB migrations
     ;(async () => {
       await delay(8000)
       await knex.migrate.latest()

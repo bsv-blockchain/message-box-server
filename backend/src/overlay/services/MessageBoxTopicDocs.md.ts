@@ -1,27 +1,62 @@
-export default `# MessageBox Topic Manager Docs
+export default `
+# MessageBox Topic Manager
 
-This overlay topic manages advertisements that associate identity keys with MessageBox hosts. These advertisements allow clients to discover where a given identity is hosted so messages can be routed accordingly.
+The **MessageBox Topic Manager** defines SHIP overlay admittance rules for the \`tm_messagebox\` topic. It ensures that only properly signed and structured advertisements from identity keys are admitted into the overlay network.
 
-## Use
+---
 
-- Advertise your MessageBox host by signing and broadcasting an advertisement with your identity key.
-- Other participants will query the overlay network to find your host and send messages to it.
+## Overview
 
-## Advertisement Format
+This Topic Manager is responsible for filtering and validating outputs that represent host advertisements. Each advertisement is a [PushDrop]-encoded output containing a host URL, timestamp, nonce, and a digital signature. The Topic Manager ensures that only valid advertisements signed by the advertising identity key are admitted.
 
-Each advertisement must include:
+---
 
-- \`identityKey\`: The public key of the identity that owns the MessageBox.
-- \`host\`: The full URL (including protocol) of the MessageBox server (e.g., \`https://msgbox.example.com\`).
-- \`timestamp\`: The ISO string timestamp when the ad was created.
-- \`nonce\`: A random value to differentiate multiple advertisements.
-- \`signature\`: A valid signature over the payload, created with the identity key.
+## Output Admittance Criteria
 
-## Verification
+To be admitted into the \`tm_messagebox\` topic, an output must:
 
-The signature is checked before accepting any advertisement into the overlay. Invalid or outdated ads will be rejected.
+1. Contain a valid PushDrop script with 5 fields:
+   - Identity Key (UTF-8)
+   - Host (UTF-8)
+   - ISO Timestamp (UTF-8)
+   - Nonce (UTF-8)
+   - Signature (binary)
+2. Have a valid signature that matches the concatenated data fields:
+   \`\`\`
+   data = host || timestamp || nonce
+   \`\`\`
+3. Be signed using protocol ID \`[0, "MBSERVEAD"]\` and key ID \`"1"\`.
 
-## Topic Name
+If the signature is valid for the identity key, the output is added to the list of admissible outputs.
 
-This overlay topic uses the name: \`lsmessagebox\`
+---
+
+## Function: identifyAdmissibleOutputs
+
+The core method of this manager, \`identifyAdmissibleOutputs(beef, previousCoins)\`, performs the following:
+
+- Decodes each output in the given transaction.
+- Validates each advertisement’s signature using \`ProtoWallet.verifySignature\`.
+- Returns the list of output indexes that are valid for admittance.
+
+---
+
+## Example
+
+This Topic Manager is used by overlay nodes during transaction processing to determine which outputs should be broadcast to participants or stored in lookup services.
+
+---
+
+## Metadata
+
+- **Name**: MessageBox Topic Manager
+- **Topic**: \`tm_messagebox\`
+- **Short Description**: Advertises and validates hosts for message routing.
+
+---
+
+## Configuration
+
+This topic manager requires no configuration beyond being registered for the \`tm_messagebox\` topic and having access to a functional ProtoWallet.
+
 `

@@ -1,26 +1,123 @@
-## Setting Up Deployment
+# MessageBox Server Deployment Guide
+This guide outlines how to deploy the main MessageBox Server — a secure, peer-to-peer message exchange server supporting HTTP and WebSocket protocols with identity key authentication and optional monetization support.
+________________________________________
+### Overview
+The MessageBox Server enables secure communication between users by supporting:
+- Authenticated message sending and receiving
+- Message box creation and routing
+- WebSocket-based real-time delivery
+- SHIP-compatible overlay host advertisement (optional)
+- Encryption and decryption of messages before transmission
+________________________________________
+### Requirements
+- Node.js ≥ 18
+- MySQL ≥ 8
+- Docker (optional for local setup)
+- A valid SERVER_PRIVATE_KEY (hex string, 64 characters)
+- Wallet Storage instance URL (e.g., https://wallet-storage.babbage.systems)
+________________________________________
+### Project Structure
+```bash
+.
+├── src/                     # Server source files (Express app, routes, WebSocket, logger)
+├── backend/                # SHIP-compatible overlay service (used by LARS)
+├── knexfile.js             # DB connection settings
+├── app.ts                  # Express and route setup
+├── index.ts                # Server entry point with WebSocket support
+├── .env                    # Environment variable configuration
+└── ...
+```
+________________________________________
+### Required Environment Variables
 
-**DISCLAIMER:** Deploy this however you want. Babbage thinks Google Cloud Run with GitHub Actions is a great place for new developers to get started deploying scalable, containerized applications. If you have other instructions or scripts you'd like to add or improve, for alternative deployment setups, you're welcome to PR them!
+Create a .env file in the root with the following:
 
-### Rough Notes
+```env
+NODE_ENV=production
+SERVER_PRIVATE_KEY=your_hex_64_char_key
+WALLET_STORAGE_URL=https://wallet-storage.babbage.systems
+ENABLE_WEBSOCKETS=true
+PORT=5001
+ROUTING_PREFIX=
+```
 
-This runs on the GCP (Google Cloud Platform) within Cloud Run (Docker) containers. You will need a GCP account using IAM, that includes running a database, and your GitHub Actions configured for your fork of this repo.
+Optional:
 
-In addition, you will need `gcloud` command line tools set up. You will need to run `gcloud auth login` and configure it to use the correct project. To do this, run `gcloud config configurations create your-cfg-name`, then `gcloud config set account your-email@domain.tld` and finally `gcloud config set project your-project-id`.
+```env
+LOGGING_ENABLED=true
+SKIP_NGINX=true     # Set to skip auto-starting nginx in production
+```
+________________________________________
+### Deployment Steps
+**Local Development**
+1.	Install dependencies:
+```bash
+npm install
+```
+2.	Start MySQL database (you can use Docker or your local MySQL):
+    - If using Docker:
+    ```bash
+    docker compose up
+    ```
+    - Otherwise, ensure a database is running and matches your knexfile.js.
+3.	Set up environment variables:
+```bash
+cp .env.example .env
+# Fill in actual values
+```
+4.	Run migrations:
+```bash
+npm run migrate
+```
+5.	Start the server in development mode:
+```bash
+npm run dev
+```
+Server will run at http://localhost:5001
+________________________________________
+### Production Deployment
+1.	Ensure production .env is configured correctly
+2.	Build the project (if applicable):
+```bash
+npm run build
+```
+3.	Run the server:
+```bash
+npm start
+```
+4.	Optionally, configure nginx to reverse proxy to the server. Nginx will start automatically unless SKIP_NGINX=true is set.
+________________________________________
+### WebSocket Support
+WebSocket support is enabled by default unless ENABLE_WEBSOCKETS=false is set in .env.
+Clients must authenticate with their identity key to establish a WebSocket connection.
+________________________________________
+### Testing
+To run tests:
+```bash
+npm test
+```
+This includes unit tests and integration tests for HTTP and WebSocket message delivery.
+________________________________________
+### Docker Usage
+Use Docker only if you're running a local test instance:
+```bash
+docker compose up
+```
+- Web server runs on port 3002
+- Database runs on port 3001
+- PHPMyAdmin (for SQL browsing) runs on port 3003
+________________________________________
+### Deployment on Google Cloud Run
+MessageBox can also be containerized and deployed on Google Cloud Run or any similar service. See DEPLOYING.md in backend/ for overlay-specific LARS deployment instructions.
+________________________________________
+### Related Projects
+- MessageBoxClient
+- Wallet Storage
+- Overlay Express
+- Authrite
+________________________________________
+📄 License
+The MessageBox Server is licensed under the Open BSV License.
+________________________________________
 
-Create a Cloud SQL instance (MySQL is what has been tested) and create a new DB user. Also, create a new database inside the new instance. Make note of the username, password, host name and database name you want to use. Alternatively, you can use another database hosting solution.
 
-Go to the GCP console and select a region. Use the same region as your Cloud SQL instance for best performance. Once the GCP application has been created, go to Settings and add two custom domains: one for staging and one for production.
-
-Go to GitHub repository settings and populate the repository secrets defined in `.github/workflows/deploy.yml`.
-
-- STAGING_KNEX_DB_CONNECTION is a JSON object describing the connection to your staging database. For example, `{"port":3306,"host":"10.1.1.1","user":"yourstagingusername","password":"yourstagingpassword","database":"your_staging_db"}`
-- PROD_KNEX_DB_CONNECTION is a JSON object describing the connection to your production database. For example, `{"port":3306,"host":"10.1.1.1","user":"yourprodusername","password":"yourprodpassword","database":"your_prod_db"}`
-- STAGING_MIGRATE_KEY and PROD_MIGRATE_KEY are the migration keys that can be used by the server administrator with the `/migrate` API endpoints to run new database migrations. Since staging and production use different databases, their migrations are handled separately, and different migration keys should be used for each.
-- GCP_DEPLOY_CREDS is the text of the JSON file that you downloaded when you created the access key for the service account
-
-After this is done, write a commit and push it to `master`. Check that both the GCP staging and production deployments succeeded in GitHub Actions.
-
-Once you have successfully deployed your staging and production GCP applications, use your GCP console to 'Add Domains' so you can use your custom domains by pointing them to your newly deployed applications.
-
-Once your custom domains are working, you will need to migrate both the staging and production databases to create the schema after deployment. Use the `/migrate` API endpoints on both deployments with the migration keys you have configured.

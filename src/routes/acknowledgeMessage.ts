@@ -1,8 +1,15 @@
+/**
+ * @file acknowledgeMessage.ts
+ * @description This route allows a client to acknowledge receipt of one or more messages.
+ * Acknowledged messages are removed from the database for the authenticated recipient.
+ */
+
 import { Request, Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
 import { Logger } from '../utils/logger.js'
 
+// Determine environment and initialize Knex connection
 const { NODE_ENV = 'development' } = process.env
 
 const knex: knexLib.Knex = (knexLib as any).default?.(
@@ -15,6 +22,11 @@ const knex: knexLib.Knex = (knexLib as any).default?.(
     : knexConfig.development
 )
 
+/**
+ * @interface AcknowledgeRequest
+ * @extends Request
+ * @description Represents an authenticated request body for acknowledging messages.
+ */
 export interface AcknowledgeRequest extends Request {
   auth: { identityKey: string }
   body: { messageIds?: string[] }
@@ -32,13 +44,17 @@ export default {
     status: 'success'
   },
   errors: [],
+  /**
+   * @function func
+   * @description Express route handler to acknowledge (delete) one or more messages by their messageId.
+   */
   func: async (req: AcknowledgeRequest, res: Response): Promise<Response> => {
     try {
       const { messageIds } = req.body
 
       Logger.log('[SERVER] acknowledgeMessage called for messageIds:', messageIds, 'by', req.auth.identityKey)
 
-      // Validate request body
+      // Validate request: must be a non-empty array of strings
       if ((messageIds == null) || (Array.isArray(messageIds) && messageIds.length === 0)) {
         return res.status(400).json({
           status: 'error',
@@ -55,12 +71,13 @@ export default {
         })
       }
 
-      // The server removes the message after it has been acknowledged
+      // Delete acknowledged messages for this recipient from the database
       const deleted = await knex('messages')
         .where({ recipient: req.auth.identityKey })
         .whereIn('messageId', Array.isArray(messageIds) ? messageIds : [messageIds])
         .del()
 
+      // No matching messages found
       if (deleted === 0) {
         return res.status(400).json({
           status: 'error',
@@ -69,6 +86,7 @@ export default {
         })
       }
 
+      // Deletion failed unexpectedly
       if (deleted < 0) {
         throw new Error('Deletion failed')
       }

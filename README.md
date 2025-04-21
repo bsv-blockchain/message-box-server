@@ -1,18 +1,32 @@
 # Message Box Server
 
-Facilitates general secure peer-to-peer message exchanges between parties.
+A secure, peer-to-peer message routing server designed for the Bitcoin SV ecosystem. Supports both HTTP and WebSocket message transport, encrypted payloads, identity-based routing, and overlay advertisement via SHIP.
 
 ## Overview
 
-PeerServ is a peer-to-peer messaging API that enables secure and authenticated communication between users on the MetaNet. This is primarily achieved through the use of a message-box architecture.
+MessageBox is a peer-to-peer messaging API that enables secure, encrypted, and authenticated communication between users on the MetaNet. This is primarily achieved through a message-box architecture combined with optional overlay routing and real-time WebSocket transport.
 
-When a user sends a message, they must specify the messageBox type and the recipient. This design allows for standard messageBox protocols to be defined at a higher layer while creating a separation of messages based on their type and recipient. Once a user sends a message, it is placed in a messageBox specifically designated for that user and that protocol.
+When a user sends a message, they must specify the messageBox type and the intended recipient (an identity key). This design allows for protocol-specific messageBox types to be defined at higher application layers, while maintaining clear separation of messages by type and recipient. Each message is routed into a box associated with a specific recipient and use case.
 
-Security is a critical aspect of PeerServ. It relies on [Authrite middleware](https://github.com/p2ppsr/authrite-express) to ensure that only the user who created the messageBox can access its contents. Additionally, PeerServ is compatible with [PacketPay](https://github.com/p2ppsr/packetpay-express), which wraps the Authrite middleware and provides a way for PeerServ instance owners to monetize their services through API requests.
+Security is a critical aspect of MessageBox. It relies on [Authrite middleware](https://github.com/p2ppsr/authrite-express) to ensure that only the recipient can access and acknowledge their own messages. In addition, encrypted payloads are supported using authenticated asymmetric key exchange with symmetric encryption, allowing messages to be securely transmitted and decrypted by the recipient.
 
-To make full use of PeerServ, you can use [Tokenator](https://github.com/p2ppsr/tokenator) which is the base-level client-side software for interacting with PeerServ.
+MessageBox also supports [@bsv/authsocket](https://www.npmjs.com/package/@bsv/authsocket) for real-time authenticated WebSocket communication. This enables clients to receive messages instantly and interact with rooms associated with their identity key and chosen messageBox.
+
+For more flexible routing, MessageBox integrates with the [@bsv/overlay](https://www.npmjs.com/package/@bsv/overlay) protocol, enabling public advertisement of MessageBox hosts via SHIP broadcasts. Clients can query these advertisements to route messages to remote servers if a direct messageBox is not available.
+
+To interact with MessageBox, use [MessageBoxClient](https://github.com/bitcoin-sv/p2p), the client-side library designed to handle authentication, encryption, WebSocket communication, and overlay resolution.
 
 For more information on the concepts behind PeerServ, check out the documentation on [Project Babbage](https://www.projectbabbage.com/docs/peerserv/concepts).
+
+## Concepts
+- **Identity Key:** All messages are addressed to an identity key (a public key)
+- **MessageBox:** A named message stream associated with an identity key (e.g., payment_inbox)
+- **Encrypted Payloads:** Messages can be AES-encrypted and include metadata
+- **Overlay Routing:** MessageBox instances can advertise availability via the SHIP overlay protocol
+- **Live Messaging:** Clients can join WebSocket rooms and receive messages in real-time
+- **Acknowledgment:** Messages must be acknowledged to be removed from the database
+________________________________________
+
 
 ## API Routes
 
@@ -20,79 +34,163 @@ For more information on the concepts behind PeerServ, check out the documentatio
 
 Sends a message to a specific recipient's message box.
 
-Note: All parameters given in an object.
-- **Parameters:**
-  - **recipient**: The recipient's public key
-  - **messageBox**: The name of the recipient's message box
-  - **body**: The content of the message
-- **Example Response:** `{ "status": "success" }`
-
-### POST `/listMessages`
-
-List all messages in a specific message box.
-
 **Parameters:**
-- **messageBox**: The name of the message box to list messages from
-- **Example Response**: 
 ```json
-{ 
-  "status": "success", 
-  "messages": [ {
-    "messageId": 3301, 
-    "body": '{
-      "subject":"This is a test!",
-      "messageBody":"Do you see the L?",
-      "anyRandomData":"Yes, it works!"
-    }',
-    "sender": "028d37b941208cd6b8a4c28288eda5f2f16c2b3ab0fcb6d13c18b47fe37b971fc1" 
-  } ]
+{
+  "message": {
+    "recipient": "IDENTITY_PUBLIC_KEY",
+    "messageBox": "payment_inbox",
+    "messageId": "abc123",
+    "body": "{...}" // Stringified JSON, optionally encrypted
+  }
 }
 ```
 
-### POST `/acknowledgeMessage`
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Your message has been sent to IDENTITY_PUBLIC_KEY"
+}
+```
 
-Acknowledges that a message has been received, processed, and can now be deleted from the server.
+### POST /listMessages
+List all messages for the authenticated user from a specific messageBox.
 
 **Parameters:**
-- **messageIds**: Array of message IDs to acknowledge
-- **Example Response**: `{ "status": "success" }`
+```json
+{
+  "messageBox": "payment_inbox"
+}
+```
 
-## Environmental Variables
+**Response:**
+```json
+{
+  "status": "success",
+  "messages": [
+    {
+      "messageId": "abc123",
+      "body": "{...}",
+      "sender": "SENDER_PUBLIC_KEY"
+    }
+  ]
+}
+```
+________________________________________
+### POST /acknowledgeMessage
 
-You can pass `ENV=prod`, `ENV=staging` or `ENV=dev` depending the enviornment.
+Acknowledge (and delete) one or more messages after processing.
 
-The following can also be configured:
-- `SERVER_PRIVATE_KEY` - the server's private key for authentication
-- `MIGRATE_KEY` - the key used to run the latest migration
-- `HOSTING_DOMAIN` - the server's hosting domain
+**Parameters:**
+```json
+{
+  "messageIds": ["abc123", "def456"]
+}
+```
 
-## Scripts
+**Response:**
+```json
+{
+  "status": "success"
+}
+```
+________________________________________
+## WebSocket Support
+Clients can connect to MessageBox via WebSocket for live messaging:
+- **Authentication** is performed via authenticated event or initial handshake.
+- **Rooms** use the format: IDENTITYKEY-messageBoxName
+- Events:
+  - joinRoom → subscribe to a room
+  - sendMessage → send a message
+  - sendMessageAck-ROOM → receive acknowledgment
+  - sendMessage-ROOM → receive broadcasted message
+  - leaveRoom → leave a room
 
-- `build` — build the API documentation
-- `start` — start the server without any debugging services
-- `dev` — start the server with debugging capabilities
-- `test` — run all available tests
+**Example WebSocket Usage:**
+```ts
+socket.emit('authenticated', { identityKey })
+socket.emit('joinRoom', '028d...-payment_inbox')
+socket.emit('sendMessage', {
+  roomId: '028d...-payment_inbox',
+  message: {
+    messageId: 'abc123',
+    recipient: '028d...',
+    body: '{...}'
+  }
+})
+```
+________________________________________
+## Overlay Integration
+MessageBox participates in the SHIP overlay network by:
+- **Broadcasting advertisements** mapping identity keys to reachable hosts
+- **Verifying incoming advertisements** using [@bsv/overlay](https://www.npmjs.com/package/@bsv/overlay)
+- **Responding to SHIP queries** via a LookupService
 
-## Spinning Up
+This allows clients to route messages to other MessageBox servers if the recipient is remote.
+________________________________________
+### Authentication
+All routes require the Authorization header containing the user's public key (identityKey).
+WebSocket connections also require authentication using the [@bsv/authsocket](https://www.npmjs.com/package/@bsv/authsocket) protocol.
+________________________________________
+### Environment Variables
+**Variables**
 
-Clone the repo with Docker installed.
+NODE_ENV - Set to development, staging, or production
 
-Generate a `SERVER_PRIVATE_KEY` (64 random hex digits, 256-bits) and put it into the `docker-compose.yml` file. This is the key that will be used by authrite for mutual authentication.
+PORT - Port for the HTTP server (default: 8080 or 3000)
 
-Run `docker compose up`
-- Your API will run on port **3002**
-- Your database will be available on port **3001**
-  - Username: `root`
-  - Password: `test`
-  - Database: `peerserv`
-- A web SQL database viewer (PHPMyAdmin) is on port **3003**
+SERVER_PRIVATE_KEY - 256-bit hex private key used for signing/auth
 
-To interact with this API, spin up a copy of the [PeerPay Simple UI](https://github.com/p2ppsr/peerpay-simple-ui) demo in parallel with this system.
+WALLET_STORAGE_URL - URL of wallet-storage service for identity handling
 
-## Deploying
+ENABLE_WEBSOCKETS	- Set to 'true' to enable WebSocket transport
 
-You can see some brief guidance on [deploying this server with Google Cloud Run](DEPLOYING.md).
+LOGGING_ENABLED	- Enable verbose logs for debugging
+________________________________________
+### Scripts
+```bash
+npm run dev      # Start with hot reloading
+npm run start    # Start in production
+npm run test     # Run all tests
+npm run build    # Compile documentation
+```
+________________________________________
+### Spinning Up (Local Dev)
+1.	Clone the repo
+2.	Install dependencies: npm install
+3.	Set up .env with:
+```env
+SERVER_PRIVATE_KEY=...
+WALLET_STORAGE_URL=http://localhost:3001
+ENABLE_WEBSOCKETS=true
+```
+4.	Run the database: docker compose up -d
+5.	Start server: npm run dev
 
-## License
+Default ports:
 
-The license for the code in this repository is the Open BSV License.
+MessageBox Server	8080
+
+MySQL Database	3001
+
+PHPMyAdmin	3003
+________________________________________
+
+### Example Message Payload (Encrypted)
+```json
+{
+  "encrypted": true,
+  "algorithm": "curvepoint-aes",
+  "senderPublicKey": "02abc...",
+  "encryptedSymmetricKey": [ ... ],
+  "encryptedMessage": [ ... ]
+}
+```
+________________________________________
+### Deploying
+See DEPLOYING.md for tips on deploying to Google Cloud, LARS, or Docker.
+________________________________________
+### License
+This project is released under the Open BSV License.
+

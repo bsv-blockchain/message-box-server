@@ -1,26 +1,139 @@
-## Setting Up Deployment
+# Overlay Service Deployment (for LARS)
+This guide describes how to deploy the MessageBox overlay service located in the backend/ directory. This service integrates with SHIP and is deployed via LARS, the Lightweight Authenticated Routing Service.
+________________________________________
+### Purpose
+This backend overlay service provides:
+- Overlay advertisement parsing (via SHIP outputAdded)
+- Identity key → host lookup resolution (via SHIP lookup)
+- Host attestation storage (in overlay_ads table)
+- Compatibility with SHIPBroadcaster and LookupResolver
 
-**DISCLAIMER:** Deploy this however you want. Babbage thinks Google Cloud Run with GitHub Actions is a great place for new developers to get started deploying scalable, containerized applications. If you have other instructions or scripts you'd like to add or improve, for alternative deployment setups, you're welcome to PR them!
+This service does not run an HTTP or WebSocket server itself. It is meant to be mounted into LARS using a deployment config.
+________________________________________
+### Directory Overview
+```bash
+backend/
+├── services/
+│   ├── MessageBoxStorage.ts       # Storage logic using Knex
+│   ├── MessageBoxLookupService.ts # SHIP lookup and advertisement parsing
+│   ├── MessageBoxTopicManager.ts  # Signature verification for overlay TX outputs
+├── migrations/                    # MySQL table for overlay_ads
+├── MessageBoxLookupDocs.md.js     # Lookup documentation for LARS
+├── MessageBoxTopicDocs.md.js      # TopicManager documentation for LARS
+└── DEPLOYING.md                   # This file
+```
+________________________________________
+### Deployment with LARS
+This overlay service is meant to be plugged into LARS using deployment-info.json.
+**Step 1:** Install and Run LARS
+Follow setup instructions for LARS:
+```bash
+npm install -g @bsv/lars
+mkdir my-overlay-project && cd my-overlay-project
+lars init
+```
+________________________________________
+**Step 2:** Mount MessageBox Overlay Code
+Place the backend/ folder from MessageBox into your LARS src/ directory:
+```css
+my-overlay-project/
+└── src/
+    └── messagebox/
+        └── [paste backend/ contents here]
+```
+________________________________________
+**Step 3:** Configure LARS
+Edit deployment-info.json in the LARS root:
+```json
+{
+  "name": "messagebox-overlay",
+  "sourceDirectory": "src/messagebox",
+  "lookupService": "./services/MessageBoxLookupService.ts",
+  "topicManagers": [
+    "./services/MessageBoxTopicManager.ts"
+  ],
+  "migrationsDirectory": "./migrations"
+}
+```
+________________________________________
+### Database Setup
+LARS will automatically apply the migration to create the overlay_ads table using:
+```bash
+lars start
+```
+Ensure that your database credentials are configured via LARS .env or system environment variables (e.g., KNEX_DB_CONNECTION).
+Example MySQL table created:
+```sql
+CREATE TABLE overlay_ads (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  identitykey VARCHAR(130),
+  host TEXT,
+  txid VARCHAR(64),
+  output_index INT,
+  timestamp DATETIME,
+  nonce TEXT,
+  signature TEXT,
+  raw_advertisement JSON,
+  created_at DATETIME
+)
+```
+________________________________________
+### Local Dev Testing
+You can test overlay behavior using:
+- @bsv/overlay-express or @bsv/sdk’s SHIPBroadcaster
+- LookupResolver to resolve identity → host
 
-### Rough Notes
+The lookup method is exposed via the LARS overlay port (default: 3010):
+```ts
+import { LookupResolver } from '@bsv/sdk'
 
-This runs on the GCP (Google Cloud Platform) within Cloud Run (Docker) containers. You will need a GCP account using IAM, that includes running a database, and your GitHub Actions configured for your fork of this repo.
+const resolver = new LookupResolver({
+  networkPreset: 'local', // or 'test' or 'main'
+  overlayPorts: {
+    'tm_messagebox': 3010
+  }
+})
 
-In addition, you will need `gcloud` command line tools set up. You will need to run `gcloud auth login` and configure it to use the correct project. To do this, run `gcloud config configurations create your-cfg-name`, then `gcloud config set account your-email@domain.tld` and finally `gcloud config set project your-project-id`.
+const host = await resolver.resolveHostForIdentity({
+  identityKey: '03abc...'
+})
+```
+________________________________________
+### Environment Variables
+Set KNEX_DB_CONNECTION to point to your MySQL instance, for example:
+```json
+{
+  "client": "mysql2",
+  "connection": {
+    "host": "localhost",
+    "user": "root",
+    "password": "test",
+    "database": "messagebox"
+  }
+}
+```
+This can be passed via LARS .env file or .larsrc.
+________________________________________
+### Documentation
+This overlay service provides built-in docs through:
+- getDocumentation() → Markdown content in MessageBoxLookupDocs.md.js
+- getMetaData() → Service name and description for LARS UI
+________________________________________
+### What This Deploys
+- A SHIP-compatible overlay service that:
+    - Validates MessageBox overlay outputs
+    - Parses and stores advertisement data
+    - Answers SHIP lookup queries
+- Includes full documentation and metadata
+- Works seamlessly with the MetaNet client SDK
+________________________________________
+### Used By
+- MessageBoxClient
+- PeerPay
+- Overlay-aware apps built using SHIP & Babbage
+________________________________________
+### License
+This code is licensed under the Open BSV License.
+________________________________________
 
-Create a Cloud SQL instance (MySQL is what has been tested) and create a new DB user. Also, create a new database inside the new instance. Make note of the username, password, host name and database name you want to use. Alternatively, you can use another database hosting solution.
 
-Go to the GCP console and select a region. Use the same region as your Cloud SQL instance for best performance. Once the GCP application has been created, go to Settings and add two custom domains: one for staging and one for production.
-
-Go to GitHub repository settings and populate the repository secrets defined in `.github/workflows/deploy.yml`.
-
-- STAGING_KNEX_DB_CONNECTION is a JSON object describing the connection to your staging database. For example, `{"port":3306,"host":"10.1.1.1","user":"yourstagingusername","password":"yourstagingpassword","database":"your_staging_db"}`
-- PROD_KNEX_DB_CONNECTION is a JSON object describing the connection to your production database. For example, `{"port":3306,"host":"10.1.1.1","user":"yourprodusername","password":"yourprodpassword","database":"your_prod_db"}`
-- STAGING_MIGRATE_KEY and PROD_MIGRATE_KEY are the migration keys that can be used by the server administrator with the `/migrate` API endpoints to run new database migrations. Since staging and production use different databases, their migrations are handled separately, and different migration keys should be used for each.
-- GCP_DEPLOY_CREDS is the text of the JSON file that you downloaded when you created the access key for the service account
-
-After this is done, write a commit and push it to `master`. Check that both the GCP staging and production deployments succeeded in GitHub Actions.
-
-Once you have successfully deployed your staging and production GCP applications, use your GCP console to 'Add Domains' so you can use your custom domains by pointing them to your newly deployed applications.
-
-Once your custom domains are working, you will need to migrate both the staging and production databases to create the schema after deployment. Use the `/migrate` API endpoints on both deployments with the migration keys you have configured.
