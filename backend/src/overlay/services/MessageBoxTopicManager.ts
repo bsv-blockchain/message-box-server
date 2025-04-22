@@ -41,17 +41,28 @@ export default class MessageBoxTopicManager implements TopicManager {
     previousCoins: number[]
   ): Promise<AdmittanceInstructions> {
     const outputsToAdmit: number[] = []
-
+  
     const tx = Transaction.fromBEEF(beef)
-
+  
+    console.log(`[TOPIC MANAGER] Decoding transaction with ${tx.outputs.length} outputs`)
+  
     for (const [i, output] of tx.outputs.entries()) {
       try {
         const result = PushDrop.decode(output.lockingScript)
-    
+        console.log(`[OUTPUT ${i}] PushDrop decoded fields count: ${result.fields.length + 1}`)
+  
         // Extract signature (last field), and rest are data
         const signature = result.fields.pop() as number[]
         const [identityKeyBuf, hostBuf, timestampBuf, nonceBuf] = result.fields
-    
+  
+        console.log(`[OUTPUT ${i}] Raw Buffers:`, {
+          identityKeyBuf,
+          hostBuf,
+          timestampBuf,
+          nonceBuf,
+          signature
+        })
+  
         // Basic admissibility checks before processing
         if (
           !identityKeyBuf || !hostBuf || !timestampBuf || !nonceBuf ||
@@ -61,25 +72,20 @@ export default class MessageBoxTopicManager implements TopicManager {
           console.warn(`[ADMISSIBILITY] Output ${i} skipped due to empty field(s)`)
           continue
         }
-    
-        // Optional stricter checks (e.g., timestamp is a valid ISO string)
+  
         let host: string, timestamp: string, nonce: string
         try {
           host = Utils.toUTF8(hostBuf)
           timestamp = Utils.toUTF8(timestampBuf)
           nonce = Utils.toUTF8(nonceBuf)
-    
-          // Optional format validations
-          if (!host.includes('.') || host.length > 255) {
-            console.warn(`[ADMISSIBILITY] Output ${i} skipped due to invalid host:`, host)
-            continue
-          }
-    
+  
+          console.log(`[OUTPUT ${i}] Decoded strings:`, { host, timestamp, nonce })
+  
           if (isNaN(Date.parse(timestamp))) {
             console.warn(`[ADMISSIBILITY] Output ${i} skipped due to invalid timestamp:`, timestamp)
             continue
           }
-    
+  
           if (nonce.length > 128) {
             console.warn(`[ADMISSIBILITY] Output ${i} skipped due to oversized nonce`)
             continue
@@ -88,10 +94,18 @@ export default class MessageBoxTopicManager implements TopicManager {
           console.warn(`[ADMISSIBILITY] Output ${i} skipped due to UTF-8 decoding failure`)
           continue
         }
-    
+  
         const identityKey = Utils.toUTF8(identityKeyBuf)
         const data = [...hostBuf, ...timestampBuf, ...nonceBuf]
-    
+  
+        console.log(`[OUTPUT ${i}] Verifying signature using:`, {
+          identityKey,
+          protocolID: [1, 'messagebox advertisement'],
+          keyID: '1',
+          data,
+          signature
+        })
+  
         const { valid } = await anyoneWallet.verifySignature({
           data,
           signature,
@@ -99,23 +113,25 @@ export default class MessageBoxTopicManager implements TopicManager {
           protocolID: [1, 'messagebox advertisement'],
           keyID: '1'
         })
-    
+  
         if (valid) {
+          console.log(`[SIGNATURE] Output ${i} PASSED signature check`)
           outputsToAdmit.push(i)
         } else {
-          console.warn(`[SIGNATURE] Output ${i} failed signature verification`)
+          console.warn(`[SIGNATURE] Output ${i} FAILED signature verification`)
         }
       } catch (e) {
         console.warn(`[DECODE ERROR] Skipping output ${i} due to exception:`, e)
       }
     }
-    
-
+  
+    console.log(`[TOPIC MANAGER] Outputs to admit:`, outputsToAdmit)
+  
     return {
       outputsToAdmit,
       coinsToRetain: previousCoins
     }
-  }
+  }  
 
   /**
    * Returns a Markdown string with documentation for this topic manager.

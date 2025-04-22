@@ -21,7 +21,7 @@ import {
 import { MessageBoxStorage } from './MessageBoxStorage.js'
 import { PushDrop, Script, Utils } from '@bsv/sdk'
 import docs from './MessageBoxLookupDocs.md.js'
-import { Knex } from 'knex'
+import { MongoClient, Db } from 'mongodb'
 
 /**
  * Implements the SHIP-compatible overlay `LookupService` for MessageBox advertisements.
@@ -160,12 +160,11 @@ class MessageBoxLookupService implements LookupService {
 /**
  * Factory function used by LARS to register this lookup service.
  * 
- * @param knex - A configured Knex instance connected to the overlay database.
- * @returns A service object with a `LookupService` implementation and migrations array.
+ * @param mongoDb - A connected MongoDB database instance provided by LARS.
+ * @returns A `MessageBoxLookupService` that handles overlay lookups for MessageBox.
  */
-export default (knex: Knex) => {
-  return {
-    service: new MessageBoxLookupService(new MessageBoxStorage(knex)),
-    migrations: []                                                    
-  }
+export default (mongoDb: Db): MessageBoxLookupService => {
+  return new MessageBoxLookupService(new MessageBoxStorage(mongoDb))
 }
+
+

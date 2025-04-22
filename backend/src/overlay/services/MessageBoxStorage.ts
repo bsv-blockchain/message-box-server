@@ -2,7 +2,7 @@
  * MessageBox Storage Module
  * 
  * Provides a persistent database interface for storing and retrieving
- * MessageBox overlay advertisements using Knex and a MySQL-compatible database.
+ * MessageBox overlay advertisements using MongoDB.
  * 
  * This class supports saving advertisements received via SHIP broadcasts,
  * as well as querying and cleaning up those records.
@@ -10,35 +10,31 @@
  * @module MessageBoxStorage
  */
 
-import knexModule from 'knex'
-import type { Knex } from 'knex'
-import knexConfig from './knexfile.js'
+import { Collection, Db } from 'mongodb'
 
-const createKnex = (knexModule as any).default ?? knexModule
-
-/**
- * Formats a Date or string timestamp into a MySQL-compatible datetime string.
- * 
- * @param date - A JavaScript `Date` or ISO string
- * @returns A formatted `YYYY-MM-DD HH:MM:SS` string
- */
-function formatMySQLDate(date: string | Date): string {
-  return new Date(date).toISOString().slice(0, 19).replace('T', ' ')
-}
+// /**
+//  * Formats a Date or string timestamp into a MySQL-compatible datetime string.
+//  * 
+//  * @param date - A JavaScript `Date` or ISO string
+//  * @returns A formatted `YYYY-MM-DD HH:MM:SS` string
+//  */
+// function formatMySQLDate(date: string | Date): string {
+//   return new Date(date).toISOString().slice(0, 19).replace('T', ' ')
+// }
 
 /**
  * Handles all database operations for storing and querying MessageBox overlay advertisements.
  */
 export class MessageBoxStorage {
-  private readonly knex: Knex
+  private readonly adsCollection: Collection
 
-   /**
-   * Creates a new MessageBoxStorage instance using a given or default Knex instance.
-   * 
-   * @param knexInstance - An optional externally provided Knex instance.
+  /**
+   * Creates a new MessageBoxStorage instance.
+   *
+   * @param db - An initialized MongoDB `Db` instance.
    */
-  constructor(knexInstance?: Knex) {
-    this.knex = knexInstance ?? createKnex(knexConfig.development)
+  constructor(db: Db) {
+    this.adsCollection = db.collection('overlay_ads')
   }
 
   /**
@@ -63,16 +59,16 @@ export class MessageBoxStorage {
     signature: string,
     raw_advertisement: object
   ): Promise<void> {
-    await this.knex('overlay_ads').insert({
-      identitykey: identityKey,
+    await this.adsCollection.insertOne({
+      identityKey,
       host,
       txid,
-      output_index: outputIndex,
-      timestamp: formatMySQLDate(timestamp),
+      outputIndex,
+      timestamp,
       nonce,
       signature,
-      raw_advertisement: JSON.stringify(raw_advertisement),
-      created_at: formatMySQLDate(new Date())
+      raw_advertisement,
+      createdAt: new Date()
     })
   }
 
@@ -83,9 +79,7 @@ export class MessageBoxStorage {
    * @param outputIndex - The index of the ad output to delete.
    */
   async deleteRecord(txid: string, outputIndex: number): Promise<void> {
-    await this.knex('overlay_ads')
-      .where({ txid, output_index: outputIndex })
-      .del()
+    await this.adsCollection.deleteOne({ txid, outputIndex })
   }
 
   /**
@@ -95,12 +89,13 @@ export class MessageBoxStorage {
    * @returns An array of host strings ordered by recency.
    */
   async findHostsForIdentity(identityKey: string): Promise<string[]> {
-    const rows = await this.knex('overlay_ads')
-      .select('host')
-      .where({ identitykey: identityKey })
-      .orderBy('created_at', 'desc')
+    const cursor = this.adsCollection
+      .find({ identityKey })
+      .sort({ createdAt: -1 })
+      .project({ host: 1 })
 
-    return rows.map(row => row.host)
+    const results = await cursor.toArray()
+    return results.map(doc => doc.host)
   }
 
   /**
@@ -109,15 +104,14 @@ export class MessageBoxStorage {
    * @returns An array of identity/host records, most recent first.
    */
   async findAll(): Promise<{ identityKey: string, host: string, timestamp?: string, nonce?: string }[]> {
-    const rows = await this.knex('overlay_ads')
-      .select('identitykey', 'host', 'timestamp', 'nonce')
-      .orderBy('created_at', 'desc')
+    const cursor = this.adsCollection.find({}).sort({ createdAt: -1 })
+    const results = await cursor.toArray()
 
-    return rows.map(row => ({
-      identityKey: row.identitykey as string,
-      host: row.host as string,
-      timestamp: row.timestamp as string | undefined,
-      nonce: row.nonce as string | undefined
+    return results.map(doc => ({
+      identityKey: doc.identityKey,
+      host: doc.host,
+      timestamp: doc.timestamp,
+      nonce: doc.nonce
     }))
   }
 
@@ -128,16 +122,18 @@ export class MessageBoxStorage {
    * @returns A list of the latest identity/host advertisement records.
    */
   async findRecent(limit = 10): Promise<{ identityKey: string, host: string, timestamp?: string, nonce?: string }[]> {
-    const rows = await this.knex('overlay_ads')
-      .select('identitykey', 'host', 'timestamp', 'nonce')
-      .orderBy('created_at', 'desc')
+    const cursor = this.adsCollection
+      .find({})
+      .sort({ createdAt: -1 })
       .limit(limit)
 
-    return rows.map(row => ({
-      identityKey: row.identitykey as string,
-      host: row.host as string,
-      timestamp: row.timestamp as string | undefined,
-      nonce: row.nonce as string | undefined
+    const results = await cursor.toArray()
+    return results.map(doc => ({
+      identityKey: doc.identityKey,
+      host: doc.host,
+      timestamp: doc.timestamp,
+      nonce: doc.nonce
     }))
   }
 }
+

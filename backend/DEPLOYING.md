@@ -14,7 +14,7 @@ ________________________________________
 ```bash
 backend/
 ├── services/
-│   ├── MessageBoxStorage.ts       # Storage logic using Knex
+│   ├── MessageBoxStorage.ts       # MongoDB-based storage logic
 │   ├── MessageBoxLookupService.ts # SHIP lookup and advertisement parsing
 │   ├── MessageBoxTopicManager.ts  # Signature verification for overlay TX outputs
 ├── migrations/                    # MySQL table for overlay_ads
@@ -46,37 +46,38 @@ ________________________________________
 Edit deployment-info.json in the LARS root:
 ```json
 {
-  "name": "messagebox-overlay",
-  "sourceDirectory": "src/messagebox",
-  "lookupService": "./services/MessageBoxLookupService.ts",
-  "topicManagers": [
-    "./services/MessageBoxTopicManager.ts"
-  ],
-  "migrationsDirectory": "./migrations"
+  "schema": "bsv-app",
+  "topicManagers": {
+    "tm_messagebox": "./src/messagebox/services/MessageBoxTopicManager.ts"
+  },
+  "lookupServices": {
+    "ls_messagebox": {
+      "serviceFactory": "./src/messagebox/services/MessageBoxLookupService.ts",
+      "hydrateWith": "mongo"
+    }
+  }
 }
 ```
+Note: hydrateWith: "mongo" instructs LARS to pass a MongoDB Db instance to your factory.
 ________________________________________
-### Database Setup
-LARS will automatically apply the migration to create the overlay_ads table using:
+### MongoDB Setup
+LARS will not run any migrations. You must provide an active MongoDB database via environment variables.
+
+Set the following environment variables:
+
+Variable
+MONGO_URI	mongodb://localhost:27017
+MONGO_DB	messagebox_overlay
+
+These can go in .env, .larsrc, or be set inline:
+
 ```bash
+MONGO_URI=mongodb://localhost:27017 
+MONGO_DB=messagebox_overlay 
 lars start
 ```
-Ensure that your database credentials are configured via LARS .env or system environment variables (e.g., KNEX_DB_CONNECTION).
-Example MySQL table created:
-```sql
-CREATE TABLE overlay_ads (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  identitykey VARCHAR(130),
-  host TEXT,
-  txid VARCHAR(64),
-  output_index INT,
-  timestamp DATETIME,
-  nonce TEXT,
-  signature TEXT,
-  raw_advertisement JSON,
-  created_at DATETIME
-)
-```
+The MessageBoxStorage class will create and query a overlay_ads collection automatically.
+
 ________________________________________
 ### Local Dev Testing
 You can test overlay behavior using:
@@ -98,21 +99,6 @@ const host = await resolver.resolveHostForIdentity({
   identityKey: '03abc...'
 })
 ```
-________________________________________
-### Environment Variables
-Set KNEX_DB_CONNECTION to point to your MySQL instance, for example:
-```json
-{
-  "client": "mysql2",
-  "connection": {
-    "host": "localhost",
-    "user": "root",
-    "password": "test",
-    "database": "messagebox"
-  }
-}
-```
-This can be passed via LARS .env file or .larsrc.
 ________________________________________
 ### Documentation
 This overlay service provides built-in docs through:

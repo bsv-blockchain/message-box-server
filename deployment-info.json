@@ -5,9 +5,9 @@
     "tm_messagebox": "./src/overlay/services/MessageBoxTopicManager.ts"
   },
   "lookupServices": {
-    "lsmessagebox": {
+    "ls_messagebox": {
       "serviceFactory": "./src/overlay/services/MessageBoxLookupService.ts",
-      "hydrateWith": "knex"
+      "hydrateWith": "mongo"
     }
   },
   "contracts": {
