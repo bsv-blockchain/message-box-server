@@ -20,6 +20,7 @@ import { Setup } from '@bsv/wallet-toolbox'
 import knexLib, { Knex } from 'knex'
 import knexConfig from './knexfile.js'
 import type { WalletInterface } from '@bsv/sdk'
+import { createAuthMiddleware } from '@bsv/auth-express-middleware'
 
 dotenv.config()
 
@@ -91,14 +92,14 @@ export async function getWallet (): Promise<WalletInterface> {
 // Run on app startup to prep wallet and activate routes
 export const appReady = (async () => {
   await initializeWallet()
-  useRoutes()
+  await useRoutes()
 })()
 
 /**
  * @function useRoutes
  * @description Mounts middleware and routes, including pre-auth and post-auth routes.
  */
-export function useRoutes (): void {
+export async function useRoutes (): Promise<void> {
   // Parse incoming JSON bodies with a high limit
   app.use(bodyParser.json({ limit: '1gb', type: 'application/json' }))
 
@@ -117,15 +118,16 @@ export function useRoutes (): void {
     }
   })
 
-  // Automatically inject identityKey from Authorization header (for internal auth handling)
-  app.use((req, res, next) => {
-    const identityKey = req.get('Authorization')
-    if (identityKey != null && identityKey.trim() !== '') {
-      // @ts-expect-error - inject auth for overlay routes
-      req.auth = { identityKey }
-    }
-    next()
-  })
+  await walletReady
+  if (_wallet == null) {
+    throw new Error('Wallet is not initialized for auth middleware')
+  }
+
+  app.use(
+    createAuthMiddleware({
+      wallet: _wallet
+    })
+  )
 
   // Register pre-authentication routes (no auth required)
   preAuth.forEach((route) => {

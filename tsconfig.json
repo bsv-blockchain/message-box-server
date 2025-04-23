@@ -28,12 +28,10 @@
     "src/index.ts",
   ],
   "include": [
-    "src",
-    "knexfile.ts",
-    "test-globals.d.ts"
+    "src"
   ],
   "exclude": [
     "dist",
-    "**/*.test.ts",
+    "node_modules"
   ]
 }

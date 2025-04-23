@@ -7,7 +7,7 @@
     "start": "start lars",
     "dev": "nodemon --inspect --watch .env --watch src --exec tsx src/index.ts",
     "build": "tsc",
-    "test": "jest --config=jest.config.ts",
+    "test": "node --loader ts-node/esm ./node_modules/jest/bin/jest.js",
     "test:integration": "jest --config=jest.config.integration.ts",
     "test:coverage": "jest --coverage --coverageReporters=text --coverageReporters=html",
     "test:watch": "jest --watch",

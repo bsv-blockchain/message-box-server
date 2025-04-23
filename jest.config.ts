@@ -1,5 +1,7 @@
-/** @type {import('ts-jest').JestConfigWithTsJest} */
-export default {
+// jest.config.ts
+import type { JestConfigWithTsJest } from 'ts-jest'
+
+const config: JestConfigWithTsJest = {
   // Use the preset specifically designed for ESM
   preset: 'ts-jest/presets/default-esm',
 
@@ -8,10 +10,12 @@ export default {
 
   // Ignore compiled output
   testPathIgnorePatterns: ['dist/'],
-  transform: {
-    '^.+\\.test.ts?$': ['ts-jest', {
+
+  // These globals configure ts-jest to output ESM
+  globals: {
+    'ts-jest': {
       useESM: true
-    }]
+    }
   },
 
   // Tell Jest that files ending in .ts should be treated as ESM modules
@@ -23,3 +27,5 @@ export default {
     '^(\\.{1,2}/.*)\\.js$': '$1'
   }
 }
+
+export default config

@@ -46,7 +46,7 @@ class MessageBoxLookupService implements LookupService {
       const signatureBuf = decoded.fields.at(-1)!;
   
       const ad = {
-        identityKey: Utils.toUTF8(identityKeyBuf),
+        identityKey: Utils.toHex(identityKeyBuf),
         host: Utils.toUTF8(hostBuf),
         timestamp: Utils.toUTF8(timestampBuf),
         nonce: Utils.toUTF8(nonceBuf),

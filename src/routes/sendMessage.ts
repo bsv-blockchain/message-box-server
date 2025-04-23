@@ -114,8 +114,16 @@ export default {
       if (typeof message.messageId !== 'string' || message.messageId.trim() === '') {
         return res.status(400).json({ status: 'error', code: 'ERR_INVALID_MESSAGEID', description: 'Invalid message ID.' })
       }
-      if (typeof message.body !== 'string' || message.body.trim() === '') {
-        return res.status(400).json({ status: 'error', code: 'ERR_INVALID_MESSAGE_BODY', description: 'Invalid message body.' })
+      if (
+        (typeof message.body !== 'string' &&
+         (typeof message.body !== 'object' || message.body === null)) ||
+        (typeof message.body === 'string' && message.body.trim() === '')
+      ) {
+        return res.status(400).json({
+          status: 'error',
+          code: 'ERR_INVALID_MESSAGE_BODY',
+          description: 'Invalid message body.'
+        })
       }
 
       // Confirm the recipient key is a valid public key
@@ -155,13 +163,19 @@ export default {
       try {
         const messageBoxId = messageBox?.messageBoxId ?? null
 
+        // Normalize the message body into a string
+        const normalizedBody =
+        typeof message.body === 'string'
+          ? message.body
+          : JSON.stringify(message.body)
+
         await knex('messages')
           .insert({
             messageId: message.messageId,
             messageBoxId,
             sender: req.auth?.identityKey ?? null,
             recipient: message.recipient,
-            body: message.body,
+            body: normalizedBody,
             created_at: new Date(),
             updated_at: new Date()
           })

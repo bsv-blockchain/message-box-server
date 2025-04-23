@@ -98,6 +98,13 @@ export default {
         })
         .select('messageId', 'body', 'sender', 'created_at', 'updated_at')
 
+      // Normalize all message bodies to strings
+      for (const message of messages) {
+        if (typeof message.body !== 'string') {
+          message.body = JSON.stringify(message.body)
+        }
+      }
+
       // Return a list of matching messages
       return res.status(200).json({
         status: 'success',
