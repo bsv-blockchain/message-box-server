@@ -95,7 +95,7 @@ export default class MessageBoxTopicManager implements TopicManager {
           continue
         }
   
-        const identityKey = Utils.toUTF8(identityKeyBuf)
+        const identityKey = Utils.toHex(identityKeyBuf)
         const data = [...identityKeyBuf, ...hostBuf, ...timestampBuf, ...nonceBuf]
   
         console.log(`[OUTPUT ${i}] Verifying signature using:`, {
