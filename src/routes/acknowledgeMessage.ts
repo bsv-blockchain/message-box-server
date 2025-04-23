@@ -1,7 +1,12 @@
 /**
  * @file acknowledgeMessage.ts
- * @description This route allows a client to acknowledge receipt of one or more messages.
- * Acknowledged messages are removed from the database for the authenticated recipient.
+ * @description
+ * Express route to allow a client to acknowledge receipt of one or more messages.
+ * Acknowledged messages are permanently removed from the database for the
+ * authenticated identity key (recipient).
+ *
+ * This is used in the MessageBox system to clear delivered messages once received
+ * and handled on the client side (e.g., after syncing or displaying them).
  */
 
 import { Request, Response } from 'express'
@@ -12,6 +17,9 @@ import { Logger } from '../utils/logger.js'
 // Determine environment and initialize Knex connection
 const { NODE_ENV = 'development' } = process.env
 
+/**
+ * Knex instance connected based on environment (development, production, or staging).
+ */
 const knex: knexLib.Knex = (knexLib as any).default?.(
   NODE_ENV === 'production' || NODE_ENV === 'staging'
     ? knexConfig.production
@@ -32,6 +40,11 @@ export interface AcknowledgeRequest extends Request {
   body: { messageIds?: string[] }
 }
 
+/**
+ * @exports
+ * Route definition for acknowledging MessageBox messages.
+ * This object is consumed by the Express route loader to register the endpoint.
+ */
 export default {
   type: 'post',
   path: '/acknowledgeMessage',
@@ -46,7 +59,20 @@ export default {
   errors: [],
   /**
    * @function func
-   * @description Express route handler to acknowledge (delete) one or more messages by their messageId.
+   * @description
+   * Express route handler that processes a POST request to acknowledge messages.
+   * Deletes messages from the database where:
+   *   - recipient matches the authenticated identity key
+   *   - messageId matches one or more of the provided IDs
+   *
+   * Returns:
+   *   - 200 success if deletion occurs
+   *   - 400 if no messages were found or input is invalid
+   *   - 500 on internal error
+   *
+   * @param {AcknowledgeRequest} req - Express request object containing auth and message IDs
+   * @param {Response} res - Express response object
+   * @returns {Promise<Response>} JSON response with status and optional error codes
    */
   func: async (req: AcknowledgeRequest, res: Response): Promise<Response> => {
     try {

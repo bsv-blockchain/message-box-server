@@ -1,7 +1,21 @@
 /**
  * @file app.ts
- * @description Main application bootstrapper for MessageBoxServer.
- * Sets up Express middleware, routes, and initializes the wallet client.
+ * @description
+ * Initializes the MessageBoxServer Express app.
+ *
+ * Responsibilities:
+ * - Parses environment variables and loads config
+ * - Sets up Knex for DB access
+ * - Initializes WalletClient from the BSV SDK
+ * - Mounts Express routes (pre-auth and post-auth)
+ * - Applies auth middleware using wallet identity
+ *
+ * This file exports:
+ * - `app`: the configured Express instance
+ * - `walletReady`: a promise that resolves once the wallet is ready
+ * - `getWallet()`: async accessor for the WalletClient
+ * - `useRoutes()`: middleware + route initialization
+ * - `appReady`: promise that completes once all setup is done
  */
 
 import * as dotenv from 'dotenv'
@@ -40,7 +54,9 @@ if (NODE_ENV === 'development' || process.env.LOGGING_ENABLED === 'true') {
   Logger.enable()
 }
 
-// Initialize Knex instance based on environment
+/**
+ * Knex instance connected based on environment (development, production, or staging).
+ */
 export const knex: Knex = (knexLib as any).default?.(
   NODE_ENV === 'production' || NODE_ENV === 'staging'
     ? knexConfig.production
@@ -60,7 +76,12 @@ export const walletReady = new Promise<void>((resolve) => {
 
 /**
  * @function initializeWallet
- * @description Creates the WalletClient from env variables for later use in message handling.
+ * @description Initializes the WalletClient with a root identity key and storage backend.
+ *
+ * Loads configuration from the environment and connects to the wallet service.
+ *
+ * @returns {Promise<void>} Resolves when the wallet is initialized.
+ * @throws If SERVER_PRIVATE_KEY is missing or invalid.
  */
 export async function initializeWallet (): Promise<void> {
   if (SERVER_PRIVATE_KEY == null || SERVER_PRIVATE_KEY.trim() === '') {
@@ -78,8 +99,10 @@ export async function initializeWallet (): Promise<void> {
 
 /**
  * @function getWallet
- * @returns {Promise<WalletInterface>}
- * @throws If the wallet has not been initialized yet.
+ * @description Waits for the WalletClient to be ready and returns the instance.
+ *
+ * @returns {Promise<WalletInterface>} The initialized wallet client
+ * @throws {Error} If called before the wallet is initialized
  */
 export async function getWallet (): Promise<WalletInterface> {
   await walletReady
@@ -97,7 +120,17 @@ export const appReady = (async () => {
 
 /**
  * @function useRoutes
- * @description Mounts middleware and routes, including pre-auth and post-auth routes.
+ * @description Registers all routes and middleware on the Express app instance.
+ *
+ * Steps:
+ * - Applies JSON body parser
+ * - Enables CORS headers for all routes
+ * - Waits for WalletClient to initialize
+ * - Adds authentication middleware
+ * - Mounts pre-auth and post-auth route handlers
+ *
+ * @returns {Promise<void>} Once all middleware and routes are mounted
+ * @throws If wallet is not available when needed
  */
 export async function useRoutes (): Promise<void> {
   // Parse incoming JSON bodies with a high limit

@@ -30,13 +30,20 @@ class MessageBoxLookupService implements LookupService {
   constructor(public storage: MessageBoxStorage) {}
 
   /**
-   * Called when a new output is added that may contain an advertisement.
-   * 
-   * @param txid - The transaction ID of the output.
-   * @param outputIndex - The index of the output within the transaction.
-   * @param outputScript - The locking script of the output.
-   * @param topic - The overlay topic associated with this output.
-   */
+  * Called when a new output is added that may contain an advertisement.
+  * 
+  * Expected PushDrop field order:
+  * 1. identityKey (hex)
+  * 2. host (string)
+  * 3. timestamp (ISO string)
+  * 4. nonce (string)
+  * 5. signature (hex)
+  *
+  * @param txid - The transaction ID of the output.
+  * @param outputIndex - The index of the output within the transaction.
+  * @param outputScript - The locking script of the output.
+  * @param topic - The overlay topic associated with this output.
+  */
   async outputAdded?(txid: string, outputIndex: number, outputScript: Script, topic: string): Promise<void> {
     if (topic !== 'tm_messagebox') return;
   
@@ -105,11 +112,12 @@ class MessageBoxLookupService implements LookupService {
   }
 
   /**
-   * Resolves a lookup question by identity key and returns known hosts.
-   * 
-   * @param question - The lookup question to resolve.
-   * @returns A `LookupAnswer` with the host information or a `LookupFormula` if dynamic.
-   */
+  * Resolves a lookup question by identity key and returns known MessageBox host(s).
+  * 
+  * @param question - The lookup question to resolve. Must have `service` = 'ls_messagebox' and a valid `identityKey`.
+  * @returns A `LookupAnswer` containing one or more host strings that the identity key has advertised.
+  *          The answer format is `type: 'freeform'`, with result `{ hosts: string[] }`.
+  */
   async lookup(question: LookupQuestion): Promise<LookupAnswer | LookupFormula> {
     if (question.service !== 'ls_messagebox') {
       throw new Error('Unsupported lookup service')

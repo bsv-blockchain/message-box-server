@@ -1,7 +1,17 @@
 /**
  * @file sendMessage.ts
- * @description Route handler to send a message to a specific messageBox belonging to another user.
- * This endpoint allows one identity to send a message to another, optionally enforcing payment and ID validation.
+ * @description
+ * Route handler to send a message to another identity's messageBox.
+ * This route is used for P2P communication in the MessageBox system.
+ *
+ * It handles:
+ * - Validation of message structure
+ * - Validation of the recipient public key
+ * - MessageBox creation if one doesn't exist
+ * - Insertion of the message into the database
+ * - Deduplication based on messageId
+ *
+ * If a `priority` flag or payment is supplied, pricing logic can be used to validate additional fees (to be implemented).
  */
 
 import { Request, Response } from 'express'
@@ -16,7 +26,9 @@ import { Logger } from '../utils/logger.js'
 // Determine the environment (default to development)
 const { NODE_ENV = 'development', SERVER_PRIVATE_KEY } = process.env
 
-// Load the appropriate Knex configuration based on the environment
+/**
+ * Knex instance connected based on environment (development, production, or staging).
+ */
 const knex: knexLib.Knex = (knexLib as any).default?.(
   NODE_ENV === 'production' || NODE_ENV === 'staging'
     ? knexConfig.production
@@ -64,7 +76,11 @@ export function calculateMessagePrice (message: string, priority: boolean = fals
   return basePrice + sizeFactor
 }
 
-// Export the route
+/**
+ * @exports
+ * Express-compatible route definition for `/sendMessage`, used to send messages to other users.
+ * Contains metadata for auto-generation of route documentation and Swagger/OpenAPI integration.
+ */
 export default {
   type: 'post',
   path: '/sendMessage',
@@ -82,7 +98,27 @@ export default {
 
   /**
    * @function func
-   * @description Main request handler for sending a message to another identity's message box.
+   * @description
+   * Main request handler for sending a message to another user's MessageBox.
+   *
+   * Input:
+   * - `req.body.message`: The message object with recipient, box, ID, and body.
+   * - `req.auth.identityKey`: Authenticated user's identity key.
+   *
+   * Behavior:
+   * - Validates message structure and content.
+   * - Ensures recipient public key is valid.
+   * - Ensures the messageBox exists for the recipient, or creates it.
+   * - Inserts the message into the DB unless it's a duplicate.
+   *
+   * Output:
+   * - 200: Success response with messageId and confirmation.
+   * - 400: Structured validation error with reason code.
+   * - 500: Internal server error for unexpected failures.
+   *
+   * @param {SendMessageRequest} req - Authenticated request with the message to send
+   * @param {Response} res - Express response object
+   * @returns {Promise<Response>} JSON response
    */
   func: async (req: SendMessageRequest, res: Response): Promise<Response> => {
     Logger.log('[DEBUG] Processing /sendMessage request...')

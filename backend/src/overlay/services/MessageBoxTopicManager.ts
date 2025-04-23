@@ -1,16 +1,19 @@
 /**
  * MessageBox Topic Manager
  * 
- * Implements a TopicManager for the SHIP overlay system. This class validates
- * `tm_messagebox` advertisements to determine which outputs should be admitted
- * as valid MessageBox host records.
+ * Implements a `TopicManager` for the SHIP overlay system. This class validates
+ * `tm_messagebox` advertisements to determine which transaction outputs should
+ * be admitted as valid MessageBox host advertisements.
  * 
- * An advertisement is deemed admissible if its PushDrop-encoded fields contain:
- * - An identity key
- * - A host
- * - A timestamp
- * - A nonce
- * - A valid signature over [host + timestamp + nonce] from the identity key
+ * A `PushDrop`-encoded advertisement is considered valid if it contains:
+ * - An identity key (public key)
+ * - A host (string)
+ * - A timestamp (ISO 8601)
+ * - A nonce (randomized string to ensure uniqueness)
+ * - A valid signature over [host + timestamp + nonce], signed by the identity key
+ * 
+ * This class is used by SHIP indexers and overlay validators to control which
+ * records are added to the overlay host index for the MessageBox system.
  * 
  * @module MessageBoxTopicManager
  */

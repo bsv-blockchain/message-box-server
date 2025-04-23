@@ -12,16 +12,6 @@
 
 import { Collection, Db } from 'mongodb'
 
-// /**
-//  * Formats a Date or string timestamp into a MySQL-compatible datetime string.
-//  * 
-//  * @param date - A JavaScript `Date` or ISO string
-//  * @returns A formatted `YYYY-MM-DD HH:MM:SS` string
-//  */
-// function formatMySQLDate(date: string | Date): string {
-//   return new Date(date).toISOString().slice(0, 19).replace('T', ' ')
-// }
-
 /**
  * Handles all database operations for storing and querying MessageBox overlay advertisements.
  */

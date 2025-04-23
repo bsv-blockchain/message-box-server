@@ -1,7 +1,12 @@
 /**
  * @file listMessages.ts
- * @description Route handler to list messages from a specific messageBox for the authenticated user.
- * This endpoint allows clients to retrieve all messages stored in a named messageBox.
+ * @description
+ * This route allows an authenticated user to retrieve messages from a specific named messageBox.
+ *
+ * Messages are only returned if the authenticated identity has access to the specified messageBox.
+ * If the messageBox does not exist, an empty message list is returned.
+ *
+ * Typical usage: Inbox or queue retrieval for real-time or deferred message delivery.
  */
 
 import { Request, Response } from 'express'
@@ -11,6 +16,9 @@ import * as knexLib from 'knex'
 // Load the appropriate Knex configuration based on the environment
 const { NODE_ENV = 'development' } = process.env
 
+/**
+ * Knex instance connected based on environment (development, production, or staging).
+ */
 const knex: knexLib.Knex = (knexLib as any).default?.(
   NODE_ENV === 'production' || NODE_ENV === 'staging'
     ? knexConfig.production
@@ -31,6 +39,11 @@ interface ListMessagesRequest extends Request {
   body: { messageBox?: string }
 }
 
+/**
+ * @exports
+ * Route definition used by the Express router to expose the `/listMessages` POST endpoint.
+ * Responsible for querying stored messages from a messageBox owned by the authenticated user.
+ */
 export default {
   type: 'post',
   path: '/listMessages',
@@ -50,9 +63,29 @@ export default {
     ]
   },
   /**
-   * @function func
-   * @description Main route handler for listing messages in a specified messageBox for the authenticated identity.
-   */
+ * @function func
+ * @description
+ * Express handler for listing stored messages in a specified messageBox.
+ *
+ * Input:
+ * - `req.body.messageBox`: Name of the messageBox to retrieve messages from.
+ * - `req.auth.identityKey`: Authenticated user’s public identity key.
+ *
+ * Behavior:
+ * - Checks if the specified messageBox exists for the identity.
+ * - If found, returns all messages in that messageBox.
+ * - If not found, returns an empty array.
+ * - Normalizes all message bodies to strings for consistent output.
+ *
+ * Output:
+ * - 200 with `{ status: 'success', messages: [...] }`
+ * - 400 if input is missing or malformed.
+ * - 500 on internal server/database errors.
+ *
+ * @param {ListMessagesRequest} req - Authenticated request containing the messageBox name
+ * @param {Response} res - Express response object
+ * @returns {Promise<Response>} JSON response containing message records or an error
+ */
   func: async (req: ListMessagesRequest, res: Response): Promise<Response> => {
     try {
       const { messageBox } = req.body
