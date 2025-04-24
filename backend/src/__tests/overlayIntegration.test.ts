@@ -2,7 +2,7 @@ import request from 'supertest'
 import { app, knex, getWallet } from '../../app.js'
 import { mockAd as mockAdFactory } from '../../utils/__mocks__/advertiserIntegration.js'
 import { PrivateKey } from '@bsv/sdk'
-import { MessageBoxLookupService } from '../../overlay/services/MessageBoxLookupService.js'
+import { MessageBoxLookupService } from '../../lookup-services/MessageBoxLookupService.js'
 import * as advertiserUtils from '../../utils/advertiserIntegration.js'
 
 jest.mock('../../utils/advertiserIntegration.js')
@@ -14,7 +14,7 @@ describe('/overlay integration tests', () => {
     const wallet = await getWallet()
     identityKey = (await wallet.getPublicKey({ identityKey: true })).publicKey
 
-    await knex('overlay_ads').where({ identity_key: identityKey }).del()
+    await knex('messagebox_advertisement').where({ identity_key: identityKey }).del()
   })
 
   afterAll(async () => {

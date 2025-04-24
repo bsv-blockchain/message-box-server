@@ -5,7 +5,7 @@ ________________________________________
 This backend overlay service provides:
 - Overlay advertisement parsing (via SHIP outputAdded)
 - Identity key → host lookup resolution (via SHIP lookup)
-- Host attestation storage (in overlay_ads table)
+- Host attestation storage (in messagebox_advertisement table)
 - Compatibility with SHIPBroadcaster and LookupResolver
 
 This service does not run an HTTP or WebSocket server itself. It is meant to be mounted into LARS using a deployment config.
@@ -17,7 +17,7 @@ backend/
 │   ├── MessageBoxStorage.ts       # MongoDB-based storage logic
 │   ├── MessageBoxLookupService.ts # SHIP lookup and advertisement parsing
 │   ├── MessageBoxTopicManager.ts  # Signature verification for overlay TX outputs
-├── migrations/                    # MySQL table for overlay_ads
+├── migrations/                    # MySQL table for messagebox_advertisement
 ├── MessageBoxLookupDocs.md.js     # Lookup documentation for LARS
 ├── MessageBoxTopicDocs.md.js      # TopicManager documentation for LARS
 └── DEPLOYING.md                   # This file
@@ -76,7 +76,7 @@ MONGO_URI=mongodb://localhost:27017
 MONGO_DB=messagebox_overlay 
 lars start
 ```
-The MessageBoxStorage class will create and query a overlay_ads collection automatically.
+The MessageBoxStorage class will create and query a messagebox_advertisement collection automatically.
 
 ________________________________________
 ### Local Dev Testing

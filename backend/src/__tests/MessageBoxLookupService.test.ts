@@ -1,4 +1,4 @@
-import { MessageBoxLookupService } from '../MessageBoxLookupService.js'
+import { MessageBoxLookupService } from '../../../lookup-services/MessageBoxLookupService.js'
 import type { Message } from '../../types.js'
 import axios from 'axios'
 

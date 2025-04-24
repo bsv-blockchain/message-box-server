@@ -1,4 +1,4 @@
-import { MessageBoxLookupService } from '../services/MessageBoxLookupService.js'
+import { MessageBoxLookupService } from '../../lookup-services/MessageBoxLookupService.js'
 import { MessageBoxStorage } from '../services/MessageBoxStorage.js'
 import { knex, getWallet } from '../../app.js'
 import http from 'http'
@@ -15,8 +15,8 @@ describe('MessageBoxLookupService (Integration)', () => {
     const wallet = await getWallet()
     identityKey = (await wallet.getPublicKey({ identityKey: true })).publicKey
 
-    await knex('overlay_ads').where({ identity_key: identityKey }).del()
-    await knex('overlay_ads').insert({
+    await knex('messagebox_advertisement').where({ identity_key: identityKey }).del()
+    await knex('messagebox_advertisement').insert({
       identity_key: identityKey,
       host: TEST_HOST,
       timestamp: new Date(),
@@ -35,7 +35,7 @@ describe('MessageBoxLookupService (Integration)', () => {
       req.on('end', () => {
         try {
           receivedBody = JSON.parse(body)
-        } catch {}
+        } catch { }
 
         res.setHeader('Content-Type', 'application/json')
 
@@ -72,7 +72,7 @@ describe('MessageBoxLookupService (Integration)', () => {
   })
 
   afterAll(async () => {
-    await knex('overlay_ads').where({ identity_key: identityKey }).del()
+    await knex('messagebox_advertisement').where({ identity_key: identityKey }).del()
 
     await new Promise<void>((resolve, reject) => {
       testServer.close((err?: Error | null) => {

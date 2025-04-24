@@ -12,16 +12,6 @@
 
 import { Collection, Db } from 'mongodb'
 
-// /**
-//  * Formats a Date or string timestamp into a MySQL-compatible datetime string.
-//  * 
-//  * @param date - A JavaScript `Date` or ISO string
-//  * @returns A formatted `YYYY-MM-DD HH:MM:SS` string
-//  */
-// function formatMySQLDate(date: string | Date): string {
-//   return new Date(date).toISOString().slice(0, 19).replace('T', ' ')
-// }
-
 /**
  * Handles all database operations for storing and querying MessageBox overlay advertisements.
  */
@@ -34,7 +24,7 @@ export class MessageBoxStorage {
    * @param db - An initialized MongoDB `Db` instance.
    */
   constructor(db: Db) {
-    this.adsCollection = db.collection('overlay_ads')
+    this.adsCollection = db.collection('messagebox_advertisement')
   }
 
   /**
@@ -44,30 +34,18 @@ export class MessageBoxStorage {
    * @param host - The host address of the MessageBox server.
    * @param txid - The transaction ID containing the advertisement.
    * @param outputIndex - The index of the output containing the ad in the transaction.
-   * @param timestamp - The timestamp included in the ad.
-   * @param nonce - A random string to prevent collisions.
-   * @param signature - The hex-encoded signature over the advertisement fields.
-   * @param raw_advertisement - The full decoded advertisement object.
    */
   async storeRecord(
     identityKey: string,
     host: string,
     txid: string,
-    outputIndex: number,
-    timestamp: string,
-    nonce: string,
-    signature: string,
-    raw_advertisement: object
+    outputIndex: number
   ): Promise<void> {
     await this.adsCollection.insertOne({
       identityKey,
       host,
       txid,
       outputIndex,
-      timestamp,
-      nonce,
-      signature,
-      raw_advertisement,
       createdAt: new Date()
     })
   }
@@ -103,15 +81,13 @@ export class MessageBoxStorage {
    * 
    * @returns An array of identity/host records, most recent first.
    */
-  async findAll(): Promise<{ identityKey: string, host: string, timestamp?: string, nonce?: string }[]> {
+  async findAll(): Promise<{ identityKey: string, host: string }[]> {
     const cursor = this.adsCollection.find({}).sort({ createdAt: -1 })
     const results = await cursor.toArray()
 
     return results.map(doc => ({
       identityKey: doc.identityKey,
-      host: doc.host,
-      timestamp: doc.timestamp,
-      nonce: doc.nonce
+      host: doc.host
     }))
   }
 
@@ -121,7 +97,7 @@ export class MessageBoxStorage {
    * @param limit - Maximum number of records to return (default: 10).
    * @returns A list of the latest identity/host advertisement records.
    */
-  async findRecent(limit = 10): Promise<{ identityKey: string, host: string, timestamp?: string, nonce?: string }[]> {
+  async findRecent(limit = 10): Promise<{ identityKey: string, host: string }[]> {
     const cursor = this.adsCollection
       .find({})
       .sort({ createdAt: -1 })
@@ -130,9 +106,7 @@ export class MessageBoxStorage {
     const results = await cursor.toArray()
     return results.map(doc => ({
       identityKey: doc.identityKey,
-      host: doc.host,
-      timestamp: doc.timestamp,
-      nonce: doc.nonce
+      host: doc.host
     }))
   }
 }

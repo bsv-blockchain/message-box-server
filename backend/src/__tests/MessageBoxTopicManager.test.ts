@@ -1,7 +1,7 @@
-import { MessageBoxTopicManager } from '../MessageBoxTopicManager.js'
+import { MessageBoxTopicManager } from '../topic-managers/MessageBoxTopicManager.js'
 import { MessageBoxStorage } from '../MessageBoxStorage.js'
-import * as advertiserUtils from '../../../utils/advertiserIntegration.js'
-import type { Advertisement } from '../../types.js'
+import * as advertiserUtils from '../utils/advertiserIntegration.js'
+import type { Advertisement } from '../types.js'
 
 jest.mock('../MessageBoxStorage')
 jest.mock('../../../utils/advertiserIntegration')
