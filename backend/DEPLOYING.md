@@ -1,14 +1,16 @@
 # Overlay Service Deployment (for LARS)
 This guide describes how to deploy the MessageBox overlay service located in the backend/ directory. This service integrates with SHIP and is deployed via LARS, the Lightweight Authenticated Routing Service.
 ________________________________________
-### Purpose
-This backend overlay service provides:
-- Overlay advertisement parsing (via SHIP outputAdded)
-- Identity key → host lookup resolution (via SHIP lookup)
-- Host attestation storage (in overlay_ads table)
+### Overview
+This overlay module enables remote identity resolution and host advertisement via SHIP, by providing:
+
+- Parsing of PushDrop overlay advertisements
+- SHIP-compatible lookup via identity key
+- Host-to-identity attestation storage in MongoDB
 - Compatibility with SHIPBroadcaster and LookupResolver
 
-This service does not run an HTTP or WebSocket server itself. It is meant to be mounted into LARS using a deployment config.
+This service does not expose HTTP or WebSocket endpoints directly. It must be deployed inside a LARS overlay container.
+
 ________________________________________
 ### Directory Overview
 ```bash
@@ -24,7 +26,7 @@ backend/
 ```
 ________________________________________
 ### Deployment with LARS
-This overlay service is meant to be plugged into LARS using deployment-info.json.
+This overlay service is meant to be plugged into LARS using deployment-info.json configuration file.
 **Step 1:** Install and Run LARS
 Follow setup instructions for LARS:
 ```bash
@@ -58,7 +60,7 @@ Edit deployment-info.json in the LARS root:
   }
 }
 ```
-Note: hydrateWith: "mongo" instructs LARS to pass a MongoDB Db instance to your factory.
+Note: hydrateWith: "mongo" instructs LARS to pass a MongoDB instance to your service factory.
 ________________________________________
 ### MongoDB Setup
 LARS will not run any migrations. You must provide an active MongoDB database via environment variables.
@@ -114,12 +116,12 @@ ________________________________________
 - Works seamlessly with the MetaNet client SDK
 ________________________________________
 ### Used By
-- MessageBoxClient
-- PeerPay
+- [MessageBoxClient](https://github.com/bitcoin-sv/p2p
+- [PeerPay](https://github.com/bitcoin-sv/p2p
 - Overlay-aware apps built using SHIP & Babbage
 ________________________________________
 ### License
-This code is licensed under the Open BSV License.
+This code is licensed under the [Open BSV License](https://www.bsvlicense.org/).
 ________________________________________
 
 
