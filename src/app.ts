@@ -35,6 +35,7 @@ import knexLib, { Knex } from 'knex'
 import knexConfig from './knexfile.js'
 import type { WalletInterface } from '@bsv/sdk'
 import { createAuthMiddleware } from '@bsv/auth-express-middleware'
+import { setupSwagger } from './swagger.js'
 
 dotenv.config()
 
@@ -184,4 +185,7 @@ export async function useRoutes (): Promise<void> {
       )
     }
   })
+
+  // Enable Swagger docs
+  setupSwagger(app)
 }

@@ -77,6 +77,66 @@ export function calculateMessagePrice (message: string, priority: boolean = fals
 }
 
 /**
+ * @openapi
+ * /sendMessage:
+ *   post:
+ *     summary: Send a message to a recipient’s message box
+ *     description: |
+ *       Inserts a message into the target recipient’s message box on the server.
+ *       The recipient, message box name, and message ID must be provided.
+ *     tags:
+ *       - Message
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               message:
+ *                 type: object
+ *                 required:
+ *                   - recipient
+ *                   - messageBox
+ *                   - messageId
+ *                   - body
+ *                 properties:
+ *                   recipient:
+ *                     type: string
+ *                     description: Identity key of the recipient
+ *                   messageBox:
+ *                     type: string
+ *                     description: The name of the recipient's message box
+ *                   messageId:
+ *                     type: string
+ *                     description: Unique identifier for the message (usually an HMAC)
+ *                   body:
+ *                     oneOf:
+ *                       - type: string
+ *                       - type: object
+ *                     description: The message content
+ *     responses:
+ *       200:
+ *         description: Message stored successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 messageId:
+ *                   type: string
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Invalid request or duplicate message
+ *       500:
+ *         description: Internal server error
+ */
+
+/**
  * @exports
  * Express-compatible route definition for `/sendMessage`, used to send messages to other users.
  * Contains metadata for auto-generation of route documentation and Swagger/OpenAPI integration.

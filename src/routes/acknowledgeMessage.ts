@@ -41,6 +41,45 @@ export interface AcknowledgeRequest extends Request {
 }
 
 /**
+ * @openapi
+ * /acknowledgeMessage:
+ *   post:
+ *     summary: Acknowledge receipt of one or more messages
+ *     description: |
+ *       Removes acknowledged messages from the database for the authenticated identity key.
+ *       This is used after a client has received and handled messages.
+ *     tags:
+ *       - Message
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               messageIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Array of message IDs to acknowledge
+ *     responses:
+ *       200:
+ *         description: Successfully acknowledged messages
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *       400:
+ *         description: Invalid input or message not found
+ *       500:
+ *         description: Internal server error
+ */
+
+/**
  * @exports
  * Route definition for acknowledging MessageBox messages.
  * This object is consumed by the Express route loader to register the endpoint.
@@ -57,6 +96,7 @@ export default {
     status: 'success'
   },
   errors: [],
+
   /**
    * @function func
    * @description

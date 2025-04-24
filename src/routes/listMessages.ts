@@ -40,6 +40,60 @@ interface ListMessagesRequest extends Request {
 }
 
 /**
+ * @openapi
+ * /listMessages:
+ *   post:
+ *     summary: Retrieve messages from a specific messageBox
+ *     description: |
+ *       Returns all stored messages for the specified messageBox that belong to the authenticated identity.
+ *       If the box does not exist or has no messages, an empty array is returned.
+ *     tags:
+ *       - Message
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               messageBox:
+ *                 type: string
+ *                 description: The name of the messageBox to retrieve messages from
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved messages (can be empty)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 messages:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       messageId:
+ *                         type: string
+ *                       body:
+ *                         type: string
+ *                       sender:
+ *                         type: string
+ *                       created_at:
+ *                         type: string
+ *                         format: date-time
+ *                       updated_at:
+ *                         type: string
+ *                         format: date-time
+ *       400:
+ *         description: Invalid or missing messageBox name
+ *       500:
+ *         description: Internal server/database error
+ */
+
+/**
  * @exports
  * Route definition used by the Express router to expose the `/listMessages` POST endpoint.
  * Responsible for querying stored messages from a messageBox owned by the authenticated user.
