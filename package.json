@@ -4,7 +4,7 @@
   "main": "./out/src/index.js",
   "type": "module",
   "scripts": {
-    "start": "start lars",
+    "start": "lars start",
     "dev": "nodemon --inspect --watch .env --watch src --exec tsx src/index.ts",
     "build": "tsc",
     "test": "jest --config=jest.config.ts",

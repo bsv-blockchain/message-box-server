@@ -14,3 +14,4 @@ app.staging.yaml
 /example/public/
 out
 local-data
+data
