@@ -67,7 +67,7 @@ export default class MessageBoxTopicManager implements TopicManager {
           continue
         }
 
-        let host: string, timestamp: string, nonce: string
+        let host: string
         try {
           host = Utils.toUTF8(hostBuf)
           console.log(`[OUTPUT ${i}] Decoded host:`, { host })
@@ -80,11 +80,11 @@ export default class MessageBoxTopicManager implements TopicManager {
         const data = result.fields.reduce((a, e) => [...a, ...e], [])
 
         console.log(`[OUTPUT ${i}] Verifying signature using:`, {
-          identityKey,
-          protocolID: [1, 'messagebox advertisement'],
-          keyID: '1',
           data,
-          signature
+          signature,
+          counterparty: identityKey,
+          protocolID: [1, 'messagebox advertisement'],
+          keyID: '1'
         })
 
         const { valid } = await anyoneWallet.verifySignature({
