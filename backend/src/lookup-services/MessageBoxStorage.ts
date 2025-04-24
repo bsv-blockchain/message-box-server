@@ -10,6 +10,7 @@
  * @module MessageBoxStorage
  */
 
+import { LookupFormula } from '@bsv/overlay'
 import { Collection, Db } from 'mongodb'
 
 /**
@@ -61,33 +62,40 @@ export class MessageBoxStorage {
   }
 
   /**
-   * Finds all known host advertisements for a given identity key.
-   * 
+   * Finds all known lookup records for a given identity key,
+   * ordered by recency.
+   *
    * @param identityKey - The identity key to look up.
-   * @returns An array of host strings ordered by recency.
+   * @returns An array of LookupFormula objects ordered by createdAt desc.
    */
-  async findHostsForIdentity(identityKey: string): Promise<string[]> {
+  async findHostsForIdentity(identityKey: string): Promise<LookupFormula> {
     const cursor = this.adsCollection
       .find({ identityKey })
+      .project({ txid: 1, outputIndex: 1 })
       .sort({ createdAt: -1 })
-      .project({ host: 1 })
 
     const results = await cursor.toArray()
-    return results.map(doc => doc.host)
+    return results.map(doc => ({
+      txid: doc.txid,
+      outputIndex: doc.outputIndex
+    }))
   }
 
   /**
    * Lists all stored advertisements in the database.
    * 
-   * @returns An array of identity/host records, most recent first.
+   * @returns An array of LookupFormula objects ordered by createdAt desc.
    */
-  async findAll(): Promise<{ identityKey: string, host: string }[]> {
-    const cursor = this.adsCollection.find({}).sort({ createdAt: -1 })
-    const results = await cursor.toArray()
+  async findAll(): Promise<LookupFormula> {
+    const cursor = this.adsCollection
+      .find({})
+      .project({ txid: 1, outputIndex: 1 })
+      .sort({ createdAt: -1 })
 
+    const results = await cursor.toArray()
     return results.map(doc => ({
-      identityKey: doc.identityKey,
-      host: doc.host
+      txid: doc.txid,
+      outputIndex: doc.outputIndex
     }))
   }
 
@@ -95,18 +103,19 @@ export class MessageBoxStorage {
    * Returns a limited number of the most recent overlay advertisements.
    * 
    * @param limit - Maximum number of records to return (default: 10).
-   * @returns A list of the latest identity/host advertisement records.
+   * @returns An array of LookupFormula objects ordered by createdAt desc.
    */
-  async findRecent(limit = 10): Promise<{ identityKey: string, host: string }[]> {
+  async findRecent(limit = 10): Promise<LookupFormula> {
     const cursor = this.adsCollection
       .find({})
+      .project({ txid: 1, outputIndex: 1 })
       .sort({ createdAt: -1 })
       .limit(limit)
 
     const results = await cursor.toArray()
     return results.map(doc => ({
-      identityKey: doc.identityKey,
-      host: doc.host
+      txid: doc.txid,
+      outputIndex: doc.outputIndex
     }))
   }
 }

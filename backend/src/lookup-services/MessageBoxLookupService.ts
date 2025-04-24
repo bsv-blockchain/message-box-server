@@ -113,12 +113,7 @@ class MessageBoxLookupService implements LookupService {
       throw new Error('identityKey query missing')
     }
 
-    const hosts = await this.storage.findHostsForIdentity(query.identityKey)
-
-    return {
-      type: 'freeform',
-      result: { hosts }
-    }
+    return await this.storage.findHostsForIdentity(query.identityKey)
   }
 
   /**
