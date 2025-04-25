@@ -33,7 +33,7 @@ MessageBox is a peer-to-peer messaging API that enables secure, encrypted, and a
 
 When a user sends a message, they must specify the messageBox type and the intended recipient (an identity key). This design allows for protocol-specific messageBox types to be defined at higher application layers, while maintaining clear separation of messages by type and recipient. Each message is routed into a box associated with a specific recipient and use case.
 
-Security is a critical aspect of MessageBox. It relies on [Authrite middleware](https://github.com/p2ppsr/authrite-express) to ensure that only the recipient can access and acknowledge their own messages. In addition, encrypted payloads are supported using authenticated asymmetric key exchange with symmetric encryption, allowing messages to be securely transmitted and decrypted by the recipient.
+Security is a critical aspect of MessageBox. It relies on [AuthExpress middleware](https://github.com/bitcoin-sv/auth-express-middleware) to ensure that only the recipient can access and acknowledge their own messages. In addition, encrypted payloads are supported using authenticated asymmetric key exchange with symmetric encryption, allowing messages to be securely transmitted and decrypted by the recipient.
 
 MessageBox also supports [@bsv/authsocket](https://www.npmjs.com/package/@bsv/authsocket) for real-time authenticated WebSocket communication. This enables clients to receive messages instantly and interact with rooms associated with their identity key and chosen messageBox.
 
