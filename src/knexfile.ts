@@ -1,6 +1,13 @@
+// src/knexfile.ts
+// import { fileURLToPath } from 'url'
+// import path from 'path'
 import dotenv from 'dotenv'
 import type { Knex } from 'knex'
+
 dotenv.config()
+
+// const fileName = fileURLToPath(import.meta.url)
+// const dirName = path.dirname(fileName)
 
 const connectionConfig = process.env.KNEX_DB_CONNECTION != null && process.env.KNEX_DB_CONNECTION.trim() !== ''
   ? JSON.parse(process.env.KNEX_DB_CONNECTION)

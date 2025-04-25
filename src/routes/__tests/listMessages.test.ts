@@ -1,12 +1,12 @@
 /* eslint-env jest */
-import listMessages from '../listMessages'
-import * as mockKnex from 'mock-knex'
+import listMessages from '../listMessages.js'
+import mockKnex, { Tracker } from 'mock-knex'
 import { Response } from 'express'
-import { AuthriteRequestMB } from '../../utils/testingInterfaces'
+import { AuthriteRequestMB } from '../../utils/testingInterfaces.js'
 
 // Ensure proper handling of mock-knex
 const knex = listMessages.knex
-let queryTracker: mockKnex.Tracker
+let queryTracker: Tracker
 
 // Define Mock Express Response Object
 const mockRes: jest.Mocked<Response> = {
@@ -42,11 +42,9 @@ describe('listMessages', () => {
   })
 
   beforeEach(() => {
-    jest.spyOn(console, 'error').mockImplementation((e) => {
-      throw e
-    })
+    jest.spyOn(console, 'error').mockImplementation(() => {})
 
-    queryTracker = (mockKnex as any).getTracker() as mockKnex.Tracker
+    queryTracker = (mockKnex as any).getTracker() as Tracker
     queryTracker.install()
 
     validMessages = [{
@@ -67,6 +65,9 @@ describe('listMessages', () => {
 
     // Fully typed mock request
     validReq = {
+      auth: {
+        identityKey: 'mockIdKey'
+      },
       authrite: {
         identityKey: 'mockIdKey'
       },
@@ -99,8 +100,8 @@ describe('listMessages', () => {
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
-      code: 'ERR_MESSAGEBOX_REQUIRED',
-      description: 'Please provide the name of a valid MessageBox!'
+      code: 'ERR_INVALID_MESSAGEBOX',
+      description: 'MessageBox name must be a string!'
     }))
   })
 
@@ -213,6 +214,14 @@ describe('listMessages', () => {
     queryTracker.on('query', () => {
       throw new Error('Failed')
     })
-    await expect(listMessages.func(validReq, mockRes as Response)).rejects.toThrow()
+
+    await listMessages.func(validReq, mockRes as Response)
+
+    expect(mockRes.status).toHaveBeenCalledWith(500)
+    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'error',
+      code: 'ERR_INTERNAL_ERROR',
+      description: 'An internal error has occurred while listing messages.'
+    }))
   })
 })

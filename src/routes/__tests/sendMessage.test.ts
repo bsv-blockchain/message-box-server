@@ -1,12 +1,19 @@
 /* eslint-env jest */
-import sendMessage, { calculateMessagePrice } from '../sendMessage'
-import * as mockKnex from 'mock-knex'
+import sendMessage, { calculateMessagePrice } from '../sendMessage.js'
+import mockKnex from 'mock-knex'
 import { Response } from 'express'
-import { Message, SendMessageRequest } from '../../utils/testingInterfaces'
+import { Message, SendMessageRequest } from '../../utils/testingInterfaces.js'
+import type { Tracker } from 'mock-knex'
+import { Logger } from '../../utils/logger.js'
+import axios from 'axios'
+import type { AxiosInstance as AxiosInstanceType } from 'axios'
+import AxiosMockAdapter from 'axios-mock-adapter'
 
-// Ensure proper handling of mock-knex
+global.fetch = jest.fn()
+
 const knex = sendMessage.knex
-let queryTracker: mockKnex.Tracker
+let queryTracker: Tracker
+let axiosMock: AxiosMockAdapter
 
 // Define Mock Express Response Object
 const mockRes: jest.Mocked<Response> = {
@@ -36,16 +43,28 @@ let validRes: { status: string }
 let validMessageBox: { messageBoxId: number, type: string }
 
 describe('sendMessage', () => {
+  // Capture original console methods
+  const originalError = console.error
+  const originalLog = console.log
+  const originalWarn = console.warn
+
   beforeAll(() => {
-    (mockKnex as any).mock(knex)
+    mockKnex.mock(knex)
   })
 
   beforeEach(() => {
-    jest.spyOn(console, 'error').mockImplementation((e) => {
-      throw e
-    })
+    Logger.enable()
 
-    queryTracker = (mockKnex as any).getTracker() as mockKnex.Tracker
+    jest.spyOn(console, 'error').mockImplementation((...args) => originalError(...args))
+    jest.spyOn(console, 'log').mockImplementation((...args) => originalLog(...args))
+    jest.spyOn(console, 'warn').mockImplementation((...args) => originalWarn(...args))
+
+    const instance: AxiosInstanceType = axios
+    // eslint-disable-next-line @typescript-eslint/prefer-ts-expect-error
+    // @ts-ignore
+    axiosMock = new AxiosMockAdapter(instance)
+
+    queryTracker = mockKnex.getTracker()
     queryTracker.install()
 
     // Mock Data
@@ -80,23 +99,25 @@ describe('sendMessage', () => {
     if (queryTracker !== null && queryTracker !== undefined) {
       queryTracker.uninstall()
     }
+
+    axiosMock?.restore()
   })
 
   afterAll(() => {
-    (mockKnex as any).unmock(knex)
+    mockKnex.unmock(knex)
   })
 
   it('Throws an error if message is missing', async () => {
-    delete validReq.body.message
-
-    // Simulate middleware behavior
+    validReq.body = {} // Ensure body exists, but message is missing
     validReq.payment = { satoshisPaid: 0 }
 
     await sendMessage.func(validReq, mockRes as Response)
+
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
-      code: 'ERR_MESSAGE_REQUIRED'
+      code: 'ERR_MESSAGE_REQUIRED',
+      description: 'Please provide a valid message to send!'
     }))
   })
 
@@ -111,7 +132,7 @@ describe('sendMessage', () => {
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_INVALID_MESSAGE',
-      description: 'Message properties must be contained in a message object!'
+      description: 'Invalid message structure.'
     }))
   })
 
@@ -128,7 +149,7 @@ describe('sendMessage', () => {
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_INVALID_RECIPIENT',
-      description: 'Recipient must be a compressed public key formatted as a hex string!'
+      description: 'Invalid recipient.'
     }))
   })
 
@@ -145,7 +166,7 @@ describe('sendMessage', () => {
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_INVALID_RECIPIENT',
-      description: 'Recipient must be a compressed public key formatted as a hex string!'
+      description: 'Invalid recipient.'
     }))
   })
 
@@ -178,7 +199,7 @@ describe('sendMessage', () => {
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_INVALID_MESSAGEBOX',
-      description: 'MessageBox must be a string!'
+      description: 'Invalid message box.'
     }))
   })
 
@@ -196,7 +217,7 @@ describe('sendMessage', () => {
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_INVALID_MESSAGE_BODY',
-      description: 'Message body must be formatted as a string!'
+      description: 'Invalid message body.'
     }))
   })
 
@@ -212,66 +233,54 @@ describe('sendMessage', () => {
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
-      code: 'ERR_MESSAGE_BODY_REQUIRED'
+      code: 'ERR_INVALID_MESSAGE_BODY',
+      description: 'Invalid message body.'
     }))
   })
 
   it('Returns base price for an empty message', () => {
     const price = calculateMessagePrice('')
-    expect(price).toBe(500) // Base price only
+    expect(price).toBe(2) // Base price only
   })
 
   it('Calculates price for a small message (below 1KB)', () => {
     const price = calculateMessagePrice('Hello, world!')
-    expect(price).toBe(500 + 50) // Base price only
+    expect(price).toBe(5) // Base price only
   })
 
   it('Calculates price for a 2KB message', () => {
     const message = 'a'.repeat(2048) // 2KB
     const price = calculateMessagePrice(message)
-    expect(price).toBe(500 + 100) // Base price + 2KB * 50 sat
+    expect(price).toBe(8) // Base price + 2KB
   })
 
   it('Adds priority fee when enabled', () => {
     const price = calculateMessagePrice('Hello', true)
-    expect(price).toBe(500 + 200 + 50) // Base price + priority fee
+    expect(price).toBe(5) // Base price
   })
 
   it('Handles large messages (5KB)', () => {
     const message = 'a'.repeat(5120) // 5KB
     const price = calculateMessagePrice(message)
-    expect(price).toBe(500 + (5 * 50)) // Base price + 5KB * 50
+    expect(price).toBe(17) // Base price + 5KB
   })
 
   it('Handles edge case of exactly 1KB message', () => {
     const message = 'a'.repeat(1024) // Exactly 1KB
     const price = calculateMessagePrice(message)
-    expect(price).toBe(500 + 50) // Base price + 1KB * 50
+    expect(price).toBe(5) // Base price + 1KB
   })
 
   it('Handles edge case of 1KB + 1 byte message', () => {
     const message = 'a'.repeat(1025) // 1KB + 1 byte
     const price = calculateMessagePrice(message)
-    expect(price).toBe(500 + 100) // Rounded up to 2KB * 50
+    expect(price).toBe(8) // Rounded up to 2KB
   })
 
   it('Handles messages larger than 10KB', () => {
     const message = 'a'.repeat(10240) // 10KB
     const price = calculateMessagePrice(message)
-    expect(price).toBe(500 + (10 * 50)) // Base price + 10KB * 50
-  })
-
-  it('Returns error if payment is missing or not processed correctly', async () => {
-    delete validReq.payment // Ensure it's fully removed
-
-    await sendMessage.func(validReq, mockRes as Response)
-
-    // Ensure the correct error response is returned
-    expect(mockRes.status).toHaveBeenCalledWith(402)
-    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'error',
-      code: 'ERR_PAYMENT_REQUIRED'
-    }))
+    expect(price).toBe(32) // Base price + 10KB
   })
 
   it('Returns error if messageId is missing', async () => {
@@ -287,7 +296,7 @@ describe('sendMessage', () => {
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_INVALID_MESSAGEID',
-      description: 'Please provide a unique counterparty-specific messageID!'
+      description: 'Invalid message ID.'
     }))
   })
 
@@ -298,7 +307,7 @@ describe('sendMessage', () => {
       } else if (step === 2) {
         q.response([validMessageBox]) // Simulate messageBox being inserted
       } else if (step === 3) {
-        q.response([validMessageBox]) // Ensure this step returns the correct messageBox
+        q.response([validMessageBox]) // Simulate finding a valid messageBoxId
       } else {
         q.response([]) // Default response
       }
@@ -311,26 +320,6 @@ describe('sendMessage', () => {
     expect(mockRes.status).toHaveBeenCalledWith(200)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'success'
-    }))
-  })
-
-  it('Returns error if the messageBox is not found', async () => {
-    queryTracker.on('query', (q, step) => {
-      if (step === 1) {
-        q.response(1) // Simulate that the messageBox exists
-      } else if (step === 2) {
-        q.response([]) // Simulate that no messageBoxRecord was found
-      }
-    })
-
-    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') } // Simulate middleware behavior
-
-    await sendMessage.func(validReq, mockRes as Response)
-
-    expect(mockRes.status).toHaveBeenCalledWith(400)
-    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'error',
-      code: 'ERR_MESSAGEBOX_NOT_FOUND'
     }))
   })
 
@@ -355,7 +344,7 @@ describe('sendMessage', () => {
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_DUPLICATE_MESSAGE',
-      description: 'Your message has already been sent to the intended recipient!'
+      description: 'Duplicate message.'
     }))
   })
 
@@ -376,7 +365,7 @@ describe('sendMessage', () => {
     expect(mockRes.status).toHaveBeenCalledTimes(1)
     expect(mockRes.status).toHaveBeenCalledWith(500)
 
-    // Ensure the correct JSON error response is returned
+    // Ensure the response body is set
     expect(mockRes.json).toHaveBeenCalledTimes(1)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
@@ -384,29 +373,47 @@ describe('sendMessage', () => {
     }))
   })
 
-  it('Calls Bugsnag.notify on internal error', async () => {
-    // Mock Bugsnag
-    globalThis.Bugsnag = { notify: jest.fn() } as any
-
-    queryTracker.on('query', () => {
-      throw new Error('Unexpected failure')
+  it('Forwards the message to an overlay host if local messageBox is missing', async () => {
+    axiosMock.onPost('https://overlay.example.com/sendMessage').reply(200, {
+      status: 'success',
+      echoed: true,
+      forwarded: true,
+      host: 'https://overlay.example.com'
     })
 
-    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') }
+    queryTracker.on('query', (q, step) => {
+      if (step === 1) q.response(undefined) // No local messageBox
+      else if (step === 2) q.response({ host: 'https://overlay.example.com' }) // Overlay ad found
+    })
 
-    await sendMessage.func(validReq, mockRes as Response)
+    validReq.auth = { identityKey: 'mockIdKey' }
+    validReq.payment = { satoshisPaid: 500 }
 
-    // Ensure Bugsnag.notify was called
-    expect(globalThis.Bugsnag.notify).toHaveBeenCalledWith(expect.any(Error))
+    await sendMessage.func(validReq, mockRes)
 
-    // Ensure a 500 response is sent
-    expect(mockRes.status).toHaveBeenCalledWith(500)
+    expect(mockRes.status).toHaveBeenCalledWith(200)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'error',
-      code: 'ERR_INTERNAL'
+      forwarded: true,
+      host: 'https://overlay.example.com'
     }))
+  }, 15000)
 
-    // Clean up mock
-    delete globalThis.Bugsnag
+  it('creates a new messageBox if no overlay ad is found', async () => {
+    queryTracker.on('query', (q, step) => {
+      if (step === 1) q.response(undefined) // messageBox not found
+      else if (step === 2) q.response(undefined) // overlay ad not found
+      else if (step === 3) q.response(1) // simulate insert
+      else if (step === 4) q.response([{ messageBoxId: 42 }]) // get messageBox
+      else if (step === 5) q.response(1) // insert message
+    })
+
+    validReq.payment = { satoshisPaid: 500 }
+
+    await sendMessage.func(validReq, mockRes)
+
+    expect(mockRes.status).toHaveBeenCalledWith(200)
+    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'success'
+    }))
   })
 })

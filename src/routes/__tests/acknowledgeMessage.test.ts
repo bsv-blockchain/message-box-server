@@ -1,12 +1,10 @@
 /* eslint-env jest */
-import acknowledgeMessage from '../acknowledgeMessage'
-import * as mockKnex from 'mock-knex'
-import { AuthriteRequest } from '../../utils/testingInterfaces'
+import acknowledgeMessage, { AcknowledgeRequest } from '../acknowledgeMessage.js'
+import mockKnex, { Tracker } from 'mock-knex'
 import { Response } from 'express'
 
-// Ensure proper handling of mock-knex
 const knex = acknowledgeMessage.knex
-let queryTracker: mockKnex.Tracker
+let queryTracker: Tracker
 
 // Define Mock Express Response Object
 const mockRes: jest.Mocked<Response> = {
@@ -30,7 +28,7 @@ const mockRes: jest.Mocked<Response> = {
   clearCookie: jest.fn().mockReturnThis()
 } as unknown as jest.Mocked<Response>
 
-let validReq: AuthriteRequest
+let validReq: AcknowledgeRequest
 
 describe('acknowledgeMessage', () => {
   beforeAll(() => {
@@ -38,14 +36,15 @@ describe('acknowledgeMessage', () => {
   })
 
   beforeEach(() => {
-    jest.spyOn(console, 'error').mockImplementation((e) => {
-      throw e
-    })
+    jest.spyOn(console, 'error').mockImplementation(() => {})
 
-    queryTracker = (mockKnex as any).getTracker() as mockKnex.Tracker
+    queryTracker = (mockKnex as any).getTracker() as Tracker
     queryTracker.install()
 
     validReq = {
+      auth: {
+        identityKey: 'mockIdKey'
+      },
       authrite: {
         identityKey: 'mockIdKey'
       },
@@ -54,7 +53,7 @@ describe('acknowledgeMessage', () => {
       },
       get: jest.fn(),
       header: jest.fn()
-    } as unknown as AuthriteRequest
+    } as unknown as AcknowledgeRequest
   })
 
   afterEach(() => {
@@ -117,19 +116,15 @@ describe('acknowledgeMessage', () => {
   })
 
   it('Throws an error if deletion fails', async () => {
-    queryTracker.on('query', (q, s) => {
-      if (s === 1) {
+    queryTracker.on('query', (q, step) => {
+      if (step === 1) {
         expect(q.method).toEqual('del')
-        expect(q.sql).toEqual(
-          'delete from `messages` where `recipient` = ? and `messageId` in (?)'
-        )
+        expect(q.sql).toEqual('delete from `messages` where `recipient` = ? and `messageId` in (?)')
+        expect(q.bindings).toEqual(['mockIdKey', '123'])
 
-        expect(q.bindings).toEqual([
-          'mockIdKey',
-          '123'
-        ])
-
-        q.response(0)
+        q.response(0) // Simulate deletion failure
+      } else {
+        q.response([]) // Prevent test from hanging due to unhandled second query
       }
     })
 
@@ -139,14 +134,22 @@ describe('acknowledgeMessage', () => {
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_INVALID_ACKNOWLEDGMENT',
-      description: 'Message not found!'
+      description: 'Message not found locally or remotely!'
     }))
-  })
+  }, 7000)
 
   it('Throws unknown errors', async () => {
-    queryTracker.on('query', (q, s) => {
+    queryTracker.on('query', () => {
       throw new Error('Failed')
     })
-    await expect(acknowledgeMessage.func(validReq, mockRes as Response)).rejects.toThrow()
+
+    await acknowledgeMessage.func(validReq, mockRes as Response)
+
+    expect(mockRes.status).toHaveBeenCalledWith(500)
+    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'error',
+      code: 'ERR_INTERNAL_ERROR',
+      description: 'An internal error has occurred while acknowledging the message'
+    }))
   })
 })

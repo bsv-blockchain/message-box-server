@@ -13,3 +13,8 @@ app.staging.yaml
 
 /example/public/
 out
+dist
+local-data
+data
+coverage
+cars_artifact*

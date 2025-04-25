@@ -1,9 +1,8 @@
-node_modules
 .git
-.env
 dist
 build
 coverage
 logs
 *.log
+.vscode
 .DS_Store
