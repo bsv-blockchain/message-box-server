@@ -11,7 +11,6 @@
  * - Insertion of the message into the database
  * - Deduplication based on messageId
  *
- * If a `priority` flag or payment is supplied, pricing logic can be used to validate additional fees (to be implemented).
  */
 
 import { Request, Response } from 'express'
@@ -19,6 +18,7 @@ import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
 import { PublicKey } from '@bsv/sdk'
 import { Logger } from '../utils/logger.js'
+import { AuthRequest } from '@bsv/auth-express-middleware'
 
 // Determine the environment (default to development)
 const { NODE_ENV = 'development', SERVER_PRIVATE_KEY } = process.env
@@ -37,24 +37,18 @@ const knex: knexLib.Knex = (knexLib as any).default?.(
 )
 
 // Type definition for the incoming message format
-interface Message {
+export interface Message {
   recipient: string
   messageBox: string
   messageId: string
   body: string
 }
 
-// Expected request body structure
-interface SendMessageRequestBody {
-  message?: Message
-  priority?: boolean
-  payment?: { satoshisPaid: number }
-}
-
 // Extended Express request type with authentication
-interface SendMessageRequest extends Request {
-  auth: { identityKey: string }
-  body: SendMessageRequestBody
+export interface SendMessageRequest extends AuthRequest {
+  body: {
+    message?: Message
+  }
 }
 
 // Validate critical server-side secret
@@ -66,7 +60,7 @@ if (SERVER_PRIVATE_KEY == null || SERVER_PRIVATE_KEY.trim() === '') {
  * @function calculateMessagePrice
  * @description Determines the price (in satoshis) to send a message, optionally with priority.
  */
-export function calculateMessagePrice (message: string, priority: boolean = false): number {
+export function calculateMessagePrice(message: string, priority: boolean = false): number {
   const basePrice = 2 // Base fee in satoshis
   const sizeFactor = Math.ceil(Buffer.byteLength(message, 'utf8') / 1024) * 3 // Satoshis per KB
 
@@ -209,7 +203,7 @@ export default {
       }
       if (
         (typeof message.body !== 'string' &&
-         (typeof message.body !== 'object' || message.body === null)) ||
+          (typeof message.body !== 'object' || message.body === null)) ||
         (typeof message.body === 'string' && message.body.trim() === '')
       ) {
         return res.status(400).json({
@@ -258,9 +252,9 @@ export default {
 
         // Normalize the message body into a string
         const normalizedBody =
-        typeof message.body === 'string'
-          ? message.body
-          : JSON.stringify(message.body)
+          typeof message.body === 'string'
+            ? message.body
+            : JSON.stringify(message.body)
 
         await knex('messages')
           .insert({

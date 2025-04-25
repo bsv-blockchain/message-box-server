@@ -7,7 +7,7 @@
     "start": "node out/src/index.js",
     "dev": "nodemon --inspect --watch .env --watch src --exec tsx src/index.ts",
     "build": "tsc",
-    "test": "node --loader ts-node/esm ./node_modules/jest/bin/jest.js",
+     "test": "jest --config=jest.config.ts",
     "test:integration": "jest --config=jest.config.integration.ts",
     "test:coverage": "jest --coverage --coverageReporters=text --coverageReporters=html",
     "test:watch": "jest --watch",

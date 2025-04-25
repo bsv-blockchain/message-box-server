@@ -1,8 +1,7 @@
 /* eslint-env jest */
-import sendMessage, { calculateMessagePrice } from '../sendMessage.js'
+import sendMessage, { calculateMessagePrice, Message, SendMessageRequest } from '../sendMessage.js'
 import mockKnex from 'mock-knex'
 import { Response } from 'express'
-import { Message, SendMessageRequest } from '../../utils/testingInterfaces.js'
 import type { Tracker } from 'mock-knex'
 import { Logger } from '../../utils/logger.js'
 import axios from 'axios'
@@ -77,7 +76,7 @@ describe('sendMessage', () => {
     }
 
     validReq = {
-      authrite: {
+      auth: {
         identityKey: 'mockIdKey'
       },
       body: {
@@ -109,7 +108,6 @@ describe('sendMessage', () => {
 
   it('Throws an error if message is missing', async () => {
     validReq.body = {} // Ensure body exists, but message is missing
-    validReq.payment = { satoshisPaid: 0 }
 
     await sendMessage.func(validReq, mockRes as Response)
 
@@ -123,9 +121,6 @@ describe('sendMessage', () => {
 
   it('Throws an error if message is not an object', async () => {
     validReq.body.message = 'My message to send' as unknown as Message
-
-    // Simulate middleware behavior
-    validReq.payment = { satoshisPaid: 0 }
 
     await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
@@ -141,9 +136,6 @@ describe('sendMessage', () => {
       validReq.body.message.recipient = undefined as unknown as string
     }
 
-    // Simulate middleware behavior
-    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') }
-
     await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -157,9 +149,6 @@ describe('sendMessage', () => {
     if (validReq.body.message !== null && validReq.body.message !== undefined) {
       validReq.body.message.recipient = 123 as unknown as string
     }
-
-    // Simulate middleware behavior
-    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') }
 
     await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
@@ -175,9 +164,6 @@ describe('sendMessage', () => {
       validReq.body.message.messageBox = undefined as unknown as string
     }
 
-    // Simulate middleware behavior
-    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') }
-
     await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -190,9 +176,6 @@ describe('sendMessage', () => {
     if (validReq.body.message !== null && validReq.body.message !== undefined) {
       validReq.body.message.messageBox = 123 as unknown as string
     }
-
-    // Simulate middleware behavior
-    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') }
 
     await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
@@ -210,7 +193,6 @@ describe('sendMessage', () => {
 
     // Simulate middleware behavior - Ensure valid string input
     const messageBody = typeof validReq.body.message?.body === 'string' ? validReq.body.message.body : ''
-    validReq.payment = { satoshisPaid: calculateMessagePrice(messageBody) }
 
     await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
@@ -225,9 +207,6 @@ describe('sendMessage', () => {
     if (validReq.body.message !== null && validReq.body.message !== undefined) {
       validReq.body.message.body = undefined as unknown as string
     }
-
-    // Simulate middleware behavior
-    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') }
 
     await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
@@ -288,8 +267,6 @@ describe('sendMessage', () => {
       validReq.body.message.messageId = undefined as unknown as string
     }
 
-    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') } // Simulate middleware behavior
-
     await sendMessage.func(validReq, mockRes as Response)
 
     expect(mockRes.status).toHaveBeenCalledWith(400)
@@ -313,8 +290,6 @@ describe('sendMessage', () => {
       }
     })
 
-    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') } // Simulate middleware behavior
-
     await sendMessage.func(validReq, mockRes as Response)
 
     expect(mockRes.status).toHaveBeenCalledWith(200)
@@ -336,8 +311,6 @@ describe('sendMessage', () => {
       }
     })
 
-    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') } // Simulate middleware behavior
-
     await sendMessage.func(validReq, mockRes as Response)
 
     expect(mockRes.status).toHaveBeenCalledWith(400)
@@ -352,8 +325,6 @@ describe('sendMessage', () => {
     queryTracker.on('query', () => {
       throw new Error('Unexpected failure') // Simulating an unexpected database failure
     })
-
-    validReq.payment = { satoshisPaid: calculateMessagePrice(validReq.body.message?.body ?? '') } // Simulate middleware behavior
 
     console.log('[TEST] Sending request that should trigger an internal error...')
 
@@ -387,7 +358,6 @@ describe('sendMessage', () => {
     })
 
     validReq.auth = { identityKey: 'mockIdKey' }
-    validReq.payment = { satoshisPaid: 500 }
 
     await sendMessage.func(validReq, mockRes)
 
@@ -406,8 +376,6 @@ describe('sendMessage', () => {
       else if (step === 4) q.response([{ messageBoxId: 42 }]) // get messageBox
       else if (step === 5) q.response(1) // insert message
     })
-
-    validReq.payment = { satoshisPaid: 500 }
 
     await sendMessage.func(validReq, mockRes)
 

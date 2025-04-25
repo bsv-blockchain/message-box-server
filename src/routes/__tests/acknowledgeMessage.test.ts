@@ -36,16 +36,13 @@ describe('acknowledgeMessage', () => {
   })
 
   beforeEach(() => {
-    jest.spyOn(console, 'error').mockImplementation(() => {})
+    jest.spyOn(console, 'error').mockImplementation(() => { })
 
     queryTracker = (mockKnex as any).getTracker() as Tracker
     queryTracker.install()
 
     validReq = {
       auth: {
-        identityKey: 'mockIdKey'
-      },
-      authrite: {
         identityKey: 'mockIdKey'
       },
       body: {
