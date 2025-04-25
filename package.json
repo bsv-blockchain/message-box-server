@@ -4,10 +4,7 @@
   "main": "./out/src/index.js",
   "type": "module",
   "scripts": {
-    "start": "lars start",
-    "lars": "lars",
-    "cars": "cars",
-    "lars:config": "lars config",
+    "start": "node out/src/index.js",
     "dev": "nodemon --inspect --watch .env --watch src --exec tsx src/index.ts",
     "build": "tsc",
     "test": "node --loader ts-node/esm ./node_modules/jest/bin/jest.js",
@@ -24,8 +21,6 @@
   "description": "",
   "devDependencies": {
     "@bsv/authsocket-client": "^1.0.8",
-    "@bsv/cars-cli": "^1.2.2",
-    "@bsv/lars": "^1.4.1",
     "@eslint/js": "^9.20.0",
     "@types/body-parser": "^1.19.5",
     "@types/dotenv": "^6.1.1",
