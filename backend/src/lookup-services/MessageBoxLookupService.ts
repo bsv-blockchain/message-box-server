@@ -52,7 +52,7 @@ class MessageBoxLookupService implements LookupService {
       const [identityKeyBuf, hostBuf] = decoded.fields;
 
       const ad = {
-        identityKey: Utils.toUTF8(identityKeyBuf),
+        identityKey: Utils.toHex(identityKeyBuf),
         host: Utils.toUTF8(hostBuf)
       };
 
