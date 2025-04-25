@@ -18,10 +18,7 @@ import { Request, Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
 import { PublicKey } from '@bsv/sdk'
-import { webcrypto } from 'crypto'
 import { Logger } from '../utils/logger.js'
-
-(global as any).self = { crypto: webcrypto }
 
 // Determine the environment (default to development)
 const { NODE_ENV = 'development', SERVER_PRIVATE_KEY } = process.env
