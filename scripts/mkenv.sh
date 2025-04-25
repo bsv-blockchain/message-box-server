@@ -22,6 +22,7 @@ perl -E'
           value: \x27$ENV{$_}\x27" for @ARGV;
 ' NODE_ENV \
     KNEX_DB_CONNECTION \
+    BSV_NETWORK \
     WALLET_STORAGE_URL \
     SERVER_PRIVATE_KEY >> $1
 

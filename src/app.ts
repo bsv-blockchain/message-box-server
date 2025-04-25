@@ -34,7 +34,8 @@ import { Setup } from '@bsv/wallet-toolbox'
 import knexLib, { Knex } from 'knex'
 import knexConfig from './knexfile.js'
 import type { WalletInterface } from '@bsv/sdk'
-import { createAuthMiddleware } from '@bsv/auth-express-middleware'
+import { AuthRequest, createAuthMiddleware } from '@bsv/auth-express-middleware'
+import { createPaymentMiddleware } from '@bsv/payment-express-middleware'
 import { setupSwagger } from './swagger.js'
 
 dotenv.config()
@@ -47,7 +48,8 @@ const {
   NODE_ENV = 'development',
   ROUTING_PREFIX = '',
   SERVER_PRIVATE_KEY,
-  WALLET_STORAGE_URL
+  WALLET_STORAGE_URL,
+  BSV_NETWORK = 'mainnet'
 } = process.env
 
 // Enable logger in dev mode or if explicitly enabled
@@ -84,13 +86,13 @@ export const walletReady = new Promise<void>((resolve) => {
  * @returns {Promise<void>} Resolves when the wallet is initialized.
  * @throws If SERVER_PRIVATE_KEY is missing or invalid.
  */
-export async function initializeWallet (): Promise<void> {
+export async function initializeWallet(): Promise<void> {
   if (SERVER_PRIVATE_KEY == null || SERVER_PRIVATE_KEY.trim() === '') {
     throw new Error('SERVER_PRIVATE_KEY is not defined in environment variables.')
   }
 
   _wallet = await Setup.createWalletClientNoEnv({
-    chain: 'main',
+    chain: BSV_NETWORK === 'testnet' ? 'test' : 'main',
     rootKeyHex: SERVER_PRIVATE_KEY,
     storageUrl: WALLET_STORAGE_URL
   })
@@ -105,7 +107,7 @@ export async function initializeWallet (): Promise<void> {
  * @returns {Promise<WalletInterface>} The initialized wallet client
  * @throws {Error} If called before the wallet is initialized
  */
-export async function getWallet (): Promise<WalletInterface> {
+export async function getWallet(): Promise<WalletInterface> {
   await walletReady
   if (_wallet == null) {
     throw new Error('Wallet has not been initialized yet.')
@@ -133,7 +135,7 @@ export const appReady = (async () => {
  * @returns {Promise<void>} Once all middleware and routes are mounted
  * @throws If wallet is not available when needed
  */
-export async function useRoutes (): Promise<void> {
+export async function useRoutes(): Promise<void> {
   // Parse incoming JSON bodies with a high limit
   app.use(bodyParser.json({ limit: '1gb', type: 'application/json' }))
 
@@ -163,6 +165,18 @@ export async function useRoutes (): Promise<void> {
   app.use(
     createAuthMiddleware({
       wallet: _wallet
+    })
+  )
+
+  app.use(
+    createPaymentMiddleware({
+      wallet: _wallet,
+      calculateRequestPrice: async (req: Request) => {
+        if (req.url.includes('/sendMessage')) {
+          // TODO: Configure a custom price calculation as needed.         
+        }
+        return 0
+      }
     })
   )
 
