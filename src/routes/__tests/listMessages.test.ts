@@ -2,7 +2,7 @@
 import listMessages from '../listMessages.js'
 import mockKnex, { Tracker } from 'mock-knex'
 import { Response } from 'express'
-import { AuthriteRequestMB } from '../../utils/testingInterfaces.js'
+import { AuthRequest } from '@bsv/auth-express-middleware'
 
 // Ensure proper handling of mock-knex
 const knex = listMessages.knex
@@ -30,7 +30,7 @@ const mockRes: jest.Mocked<Response> = {
   clearCookie: jest.fn().mockReturnThis()
 } as unknown as jest.Mocked<Response>
 
-let validReq: AuthriteRequestMB
+let validReq: AuthRequest
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 let validRes: { status: string, messages: any[] }
 let validMessageBoxes: Array<{ messageBoxId: number }>
@@ -42,7 +42,7 @@ describe('listMessages', () => {
   })
 
   beforeEach(() => {
-    jest.spyOn(console, 'error').mockImplementation(() => {})
+    jest.spyOn(console, 'error').mockImplementation(() => { })
 
     queryTracker = (mockKnex as any).getTracker() as Tracker
     queryTracker.install()
@@ -68,15 +68,12 @@ describe('listMessages', () => {
       auth: {
         identityKey: 'mockIdKey'
       },
-      authrite: {
-        identityKey: 'mockIdKey'
-      },
       body: {
         messageBox: 'payment_inbox'
       },
       get: jest.fn(),
       header: jest.fn()
-    } as unknown as AuthriteRequestMB
+    } as unknown as AuthRequest
   })
 
   afterEach(() => {

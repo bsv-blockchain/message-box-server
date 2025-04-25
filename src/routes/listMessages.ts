@@ -12,6 +12,7 @@
 import { Request, Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
+import { AuthRequest } from '@bsv/auth-express-middleware'
 
 // Load the appropriate Knex configuration based on the environment
 const { NODE_ENV = 'development' } = process.env
@@ -34,8 +35,7 @@ const knex: knexLib.Knex = (knexLib as any).default?.(
  * @extends Request
  * @description Extends Express Request to include `auth` identity and expected `messageBox` body property.
  */
-interface ListMessagesRequest extends Request {
-  auth: { identityKey: string }
+interface ListMessagesRequest extends AuthRequest {
   body: { messageBox?: string }
 }
 
@@ -164,7 +164,7 @@ export default {
       // Find the messageBox ID for this user
       const [messageBoxRecord] = await knex('messageBox')
         .where({
-          identityKey: req.auth.identityKey,
+          identityKey: req.auth?.identityKey,
           type: messageBox
         })
         .select('messageBoxId')
@@ -180,7 +180,7 @@ export default {
       // Retrieve all messages associated with the messageBox
       const messages = await knex('messages')
         .where({
-          recipient: req.auth.identityKey,
+          recipient: req.auth?.identityKey,
           messageBoxId: messageBoxRecord.messageBoxId
         })
         .select('messageId', 'body', 'sender', 'created_at', 'updated_at')
