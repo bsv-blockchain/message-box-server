@@ -50,7 +50,6 @@
     "mock-knex": "^0.4.13",
     "rimraf": "^6.0.1",
     "sqlite3": "^5.1.7",
-    "supertest": "^7.0.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "ts-jest": "^29.2.5",
