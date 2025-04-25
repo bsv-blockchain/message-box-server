@@ -15,7 +15,7 @@ export const mockAd = (): Advertisement => ({
   timestamp: new Date().toISOString()
 })
 
-export async function broadcastAdvertisement(): Promise<{
+export async function broadcastAdvertisement (): Promise<{
   advertisement: Advertisement
   txid: string
 }> {

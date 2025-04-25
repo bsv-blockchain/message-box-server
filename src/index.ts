@@ -21,11 +21,8 @@ import { app, appReady, getWallet, knex } from './app.js'
 import { spawn } from 'child_process'
 import { createServer } from 'http'
 import { PublicKey } from '@bsv/sdk'
-import { webcrypto } from 'crypto'
 import { Logger } from './utils/logger.js'
 import { AuthSocketServer } from '@bsv/authsocket'
-
-(global as any).self = { crypto: webcrypto }
 
 dotenv.config()
 
@@ -348,7 +345,7 @@ if (NODE_ENV !== 'test') {
     }
 
     // Delay before running DB migrations
-    ;(async () => {
+    ; (async () => {
       await delay(8000)
       await knex.migrate.latest()
     })().catch((error) => {
