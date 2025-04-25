@@ -1,8 +1,19 @@
 /**
  * @file index.ts
- * @description Entry point for the MessageBox Server.
- * Boots the HTTP + WebSocket server, initializes authentication,
- * and handles live message routing and persistence.
+ * @description
+ * Main entry point for the MessageBox Server.
+ *
+ * Responsibilities:
+ * - Initializes environment variables and config
+ * - Creates HTTP and WebSocket servers
+ * - Boots authentication and route handlers
+ * - Sets up database migrations after a short delay
+ * - Emits and handles real-time message events over WebSocket
+ *
+ * Exports:
+ * - `start()` for programmatic bootstrapping
+ * - `http` and `io` server instances
+ * - `HTTP_PORT` and `ROUTING_PREFIX` for external reference
  */
 
 import * as dotenv from 'dotenv'
@@ -57,7 +68,17 @@ let io: AuthSocketServer | null = null
 
 /**
  * @function start
- * @description Launches the WebSocket server, sets up authentication and routing handlers.
+ * @description
+ * Initializes the WebSocket server with identity-key-based authentication
+ * and attaches all supported event handlers for:
+ * - `sendMessage`
+ * - `joinRoom`
+ * - `leaveRoom`
+ * - `disconnect`
+ *
+ * Only runs if `ENABLE_WEBSOCKETS` is set to `true` in the environment.
+ *
+ * @returns {Promise<void>} Resolves once WebSocket listeners are fully attached.
  */
 export const start = async (): Promise<void> => {
   await appReady

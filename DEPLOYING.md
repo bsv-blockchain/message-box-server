@@ -1,19 +1,19 @@
 # MessageBox Server Deployment Guide
-This guide outlines how to deploy the main MessageBox Server — a secure, peer-to-peer message exchange server supporting HTTP and WebSocket protocols with identity key authentication and optional monetization support.
+This guide covers how to deploy the MessageBox Server — a secure peer-to-peer message relay supporting authenticated HTTP and WebSocket communication, encrypted payloads, and optional overlay advertisement using SHIP.
 ________________________________________
 ### Overview
-The MessageBox Server enables secure communication between users by supporting:
+The MessageBox Server is a node-based Express server that enables identity-authenticated messaging over HTTP and WebSocket. Key features:
 - Authenticated message sending and receiving
-- Message box creation and routing
+- Message box creation and routing by identity key
 - WebSocket-based real-time delivery
 - SHIP-compatible overlay host advertisement (optional)
-- Encryption and decryption of messages before transmission
+- AES-encrypted message payloads (handled by clients)
 ________________________________________
 ### Requirements
-- Node.js ≥ 18
-- MySQL ≥ 8
+- Node.js v18 or higher
+- MySQL v8 or higher
 - Docker (optional for local setup)
-- A valid SERVER_PRIVATE_KEY (hex string, 64 characters)
+- A valid SERVER_PRIVATE_KEY - a 256-bit hex private key
 - Wallet Storage instance URL (e.g., https://wallet-storage.babbage.systems)
 ________________________________________
 ### Project Structure
@@ -111,13 +111,13 @@ ________________________________________
 MessageBox can also be containerized and deployed on Google Cloud Run or any similar service. See DEPLOYING.md in backend/ for overlay-specific LARS deployment instructions.
 ________________________________________
 ### Related Projects
-- MessageBoxClient
-- Wallet Storage
-- Overlay Express
-- Authrite
+- [MessageBoxClient](https://github.com/bitcoin-sv/p2p)
+- [WalletClient](https://github.com/bitcoin-sv)
+- [Overlay Express](https://www.npmjs.com/package/@bsv/overlay-express)
+- [Authrite](https://www.npmjs.com/package/@bsv/auth-express-middleware)
 ________________________________________
 📄 License
-The MessageBox Server is licensed under the Open BSV License.
+The MessageBox Server is licensed under the [Open BSV License](https://www.bsvlicense.org/).
 ________________________________________
 
 

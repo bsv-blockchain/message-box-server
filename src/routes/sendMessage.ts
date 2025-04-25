@@ -1,7 +1,17 @@
 /**
  * @file sendMessage.ts
- * @description Route handler to send a message to a specific messageBox belonging to another user.
- * This endpoint allows one identity to send a message to another, optionally enforcing payment and ID validation.
+ * @description
+ * Route handler to send a message to another identity's messageBox.
+ * This route is used for P2P communication in the MessageBox system.
+ *
+ * It handles:
+ * - Validation of message structure
+ * - Validation of the recipient public key
+ * - MessageBox creation if one doesn't exist
+ * - Insertion of the message into the database
+ * - Deduplication based on messageId
+ *
+ * If a `priority` flag or payment is supplied, pricing logic can be used to validate additional fees (to be implemented).
  */
 
 import { Request, Response } from 'express'
@@ -16,7 +26,9 @@ import { Logger } from '../utils/logger.js'
 // Determine the environment (default to development)
 const { NODE_ENV = 'development', SERVER_PRIVATE_KEY } = process.env
 
-// Load the appropriate Knex configuration based on the environment
+/**
+ * Knex instance connected based on environment (development, production, or staging).
+ */
 const knex: knexLib.Knex = (knexLib as any).default?.(
   NODE_ENV === 'production' || NODE_ENV === 'staging'
     ? knexConfig.production
@@ -64,7 +76,71 @@ export function calculateMessagePrice (message: string, priority: boolean = fals
   return basePrice + sizeFactor
 }
 
-// Export the route
+/**
+ * @openapi
+ * /sendMessage:
+ *   post:
+ *     summary: Send a message to a recipient’s message box
+ *     description: |
+ *       Inserts a message into the target recipient’s message box on the server.
+ *       The recipient, message box name, and message ID must be provided.
+ *     tags:
+ *       - Message
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               message:
+ *                 type: object
+ *                 required:
+ *                   - recipient
+ *                   - messageBox
+ *                   - messageId
+ *                   - body
+ *                 properties:
+ *                   recipient:
+ *                     type: string
+ *                     description: Identity key of the recipient
+ *                   messageBox:
+ *                     type: string
+ *                     description: The name of the recipient's message box
+ *                   messageId:
+ *                     type: string
+ *                     description: Unique identifier for the message (usually an HMAC)
+ *                   body:
+ *                     oneOf:
+ *                       - type: string
+ *                       - type: object
+ *                     description: The message content
+ *     responses:
+ *       200:
+ *         description: Message stored successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 messageId:
+ *                   type: string
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Invalid request or duplicate message
+ *       500:
+ *         description: Internal server error
+ */
+
+/**
+ * @exports
+ * Express-compatible route definition for `/sendMessage`, used to send messages to other users.
+ * Contains metadata for auto-generation of route documentation and Swagger/OpenAPI integration.
+ */
 export default {
   type: 'post',
   path: '/sendMessage',
@@ -82,7 +158,27 @@ export default {
 
   /**
    * @function func
-   * @description Main request handler for sending a message to another identity's message box.
+   * @description
+   * Main request handler for sending a message to another user's MessageBox.
+   *
+   * Input:
+   * - `req.body.message`: The message object with recipient, box, ID, and body.
+   * - `req.auth.identityKey`: Authenticated user's identity key.
+   *
+   * Behavior:
+   * - Validates message structure and content.
+   * - Ensures recipient public key is valid.
+   * - Ensures the messageBox exists for the recipient, or creates it.
+   * - Inserts the message into the DB unless it's a duplicate.
+   *
+   * Output:
+   * - 200: Success response with messageId and confirmation.
+   * - 400: Structured validation error with reason code.
+   * - 500: Internal server error for unexpected failures.
+   *
+   * @param {SendMessageRequest} req - Authenticated request with the message to send
+   * @param {Response} res - Express response object
+   * @returns {Promise<Response>} JSON response
    */
   func: async (req: SendMessageRequest, res: Response): Promise<Response> => {
     Logger.log('[DEBUG] Processing /sendMessage request...')
@@ -114,8 +210,16 @@ export default {
       if (typeof message.messageId !== 'string' || message.messageId.trim() === '') {
         return res.status(400).json({ status: 'error', code: 'ERR_INVALID_MESSAGEID', description: 'Invalid message ID.' })
       }
-      if (typeof message.body !== 'string' || message.body.trim() === '') {
-        return res.status(400).json({ status: 'error', code: 'ERR_INVALID_MESSAGE_BODY', description: 'Invalid message body.' })
+      if (
+        (typeof message.body !== 'string' &&
+         (typeof message.body !== 'object' || message.body === null)) ||
+        (typeof message.body === 'string' && message.body.trim() === '')
+      ) {
+        return res.status(400).json({
+          status: 'error',
+          code: 'ERR_INVALID_MESSAGE_BODY',
+          description: 'Invalid message body.'
+        })
       }
 
       // Confirm the recipient key is a valid public key
@@ -155,13 +259,19 @@ export default {
       try {
         const messageBoxId = messageBox?.messageBoxId ?? null
 
+        // Normalize the message body into a string
+        const normalizedBody =
+        typeof message.body === 'string'
+          ? message.body
+          : JSON.stringify(message.body)
+
         await knex('messages')
           .insert({
             messageId: message.messageId,
             messageBoxId,
             sender: req.auth?.identityKey ?? null,
             recipient: message.recipient,
-            body: message.body,
+            body: normalizedBody,
             created_at: new Date(),
             updated_at: new Date()
           })

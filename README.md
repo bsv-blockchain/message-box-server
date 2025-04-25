@@ -2,7 +2,32 @@
 
 A secure, peer-to-peer message routing server designed for the Bitcoin SV ecosystem. Supports both HTTP and WebSocket message transport, encrypted payloads, identity-based routing, and overlay advertisement via SHIP.
 
-## Overview
+## Table of Contents
+
+1. [Introduction](#1-introduction)  
+2. [Overview](#2-overview)  
+3. [Concepts](#3-concepts)  
+4. [Environment Variables](#4-environment-variables)  
+5. [Quick Start](#5-quick-start)  
+6. [Examples](#6-examples)  
+7. [API Reference](#7-api-reference)  
+   - [POST /sendMessage](#post-sendmessage)  
+   - [POST /listMessages](#post-listmessages)  
+   - [POST /acknowledgeMessage](#post-acknowledgemessage)  
+8. [WebSocket Support](#8-websocket-support)  
+9. [Overlay Integration](#9-overlay-integration)  
+10. [Authentication](#10-authentication)  
+11. [Scripts](#11-scripts)  
+12. [Deploying](#12-deploying)  
+13. [License](#13-license)
+
+## 1. Introduction
+
+MessageBox Server acts as a secure relay for peer-to-peer messages. Clients send messages to named "message boxes" associated with an identity key. Messages are encrypted using BRC-2, authenticated using BRC-103, and stored until the recipient retrieves and acknowledges them.
+
+Overlay functionality allows clients to discover where a user's message box is hosted via SHIP.
+
+## 2. Overview
 
 MessageBox is a peer-to-peer messaging API that enables secure, encrypted, and authenticated communication between users on the MetaNet. This is primarily achieved through a message-box architecture combined with optional overlay routing and real-time WebSocket transport.
 
@@ -16,9 +41,7 @@ For more flexible routing, MessageBox integrates with the [@bsv/overlay](https:/
 
 To interact with MessageBox, use [MessageBoxClient](https://github.com/bitcoin-sv/p2p), the client-side library designed to handle authentication, encryption, WebSocket communication, and overlay resolution.
 
-For more information on the concepts behind PeerServ, check out the documentation on [Project Babbage](https://www.projectbabbage.com/docs/peerserv/concepts).
-
-## Concepts
+## 3. Concepts
 - **Identity Key:** All messages are addressed to an identity key (a public key)
 - **MessageBox:** A named message stream associated with an identity key (e.g., payment_inbox)
 - **Encrypted Payloads:** Messages can be AES-encrypted and include metadata
@@ -27,101 +50,331 @@ For more information on the concepts behind PeerServ, check out the documentatio
 - **Acknowledgment:** Messages must be acknowledged to be removed from the database
 ________________________________________
 
+## 4. Environment Variables
+**Variables**
 
-## API Routes
+NODE_ENV - Set to development, staging, or production
 
-### POST `/sendMessage`
+PORT - Port for the HTTP server (default: 8080 or 3000)
 
-Sends a message to a specific recipient's message box.
+ROUTING_PREFIX - (Optional) Prefix for all HTTP and WebSocket routes (e.g., /api)
 
-**Parameters:**
+HOSTING_DOMAIN - (Optional) Full domain where this server is hosted (used in overlay metadata)
+
+SERVER_PRIVATE_KEY - Required. 256-bit hex private key used for identity, signing, and authentication
+
+WALLET_STORAGE_URL - URL of a wallet-storage service that stores key derivation metadata
+
+NETWORK - Target network chain (e.g., main, test, or regtest)
+
+BSV_NETWORK - BSV overlay preset to use, such as local for SHIP dev/test indexing
+
+MONGO_URI - MongoDB connection URI used for storing overlay advertisements
+
+MONGO_DB - MongoDB database name for overlay lookup storage
+
+KNEX_DB_CONNECTION - (Optional) JSON-formatted connection string for MySQL/Knex (if not using default)
+
+ENABLE_WEBSOCKETS - Set to 'true' to enable real-time messaging over WebSocket
+
+LOGGING_ENABLED - Set to 'true' to enable verbose debug logging in any environment
+
+MIGRATE_KEY - (Optional) Key used to authorize protected migration operations, if required
+
+________________________________________
+
+## 5. Quick Start
+
+To run the MessageBox Server locally or in a hosted environment, follow the steps below.
+
+1. **Clone the Repository**
+```bash
+git clone https://github.com/bitcoin-sv/messagebox-server.git
+cd messagebox-server
+```
+
+2. **Configure Environment Variables**
+Create a .env file based on the variables listed in the Environment Variables section:
+
+```bash
+cp .env.example .env
+```
+
+Then fill in or update the necessary fields in .env, including:
+
+SERVER_PRIVATE_KEY – your root private key for identity/auth
+
+WALLET_STORAGE_URL – points to a wallet-storage instance
+
+MONGO_URI and MONGO_DB – for storing overlay advertisements
+
+(Optional) KNEX_DB_CONNECTION – if you're not using the default MySQL config
+
+For local development, use:
+
+```bash
+.env
+NODE_ENV=development
+BSV_NETWORK=local
+```
+
+Note: If you're re-running migrations locally using the instance spun up by LARS, you'll need to truncate the relevant MySQL tables manually before proceeding.
+
+3. **Install Dependencies**
+```bash
+npm install
+```
+
+4. **Run LARS or CARS (Overlay Service)**
+To start the overlay system locally (recommended for development), use:
+
+```bash
+npm run start
+```
+
+This starts LARS, the local overlay runtime. For production or distributed overlay environments, use CARS instead.
+
+5. **Start the Server**
+Once LARS or your overlay is running:
+
+```bash
+npm run dev
+```
+
+This launches the Express-based MessageBox Server on the configured port (default: 8080 or 3000 in production). WebSocket support will be enabled if ENABLE_WEBSOCKETS=true in your environment.
+
+You can customize the HTTP port using the PORT variable in .env.
+
+You're now ready to send and receive messages using the MessageBoxClient, test endpoints, and participate in the overlay network.
+
+________________________________________
+
+## 6. Examples
+
+This section provides quick examples for sending, listing, and acknowledging messages using the MessageBoxClient library. These examples assume you’ve already configured your .env, started LARS (or CARS), and launched the MessageBox Server.
+
+1. **Sending a Message**
+```ts
+import { WalletClient } from '@bsv/sdk'
+import { MessageBoxClient } from '@bsv/p2p'
+
+const wallet = new WalletClient()
+const mb = new MessageBoxClient({
+  walletClient: wallet,
+  host: 'http://localhost:8080' // your MessageBoxServer instance
+})
+
+await mb.sendMessage({
+  recipient: '028d37b941208cd6b8a4c28288eda5f2f16c2b3ab0fcb6d13c18b47fe37b971fc1',
+  messageBox: 'demo_inbox',
+  body: { text: 'Hello there!' }
+})
+```
+
+2. **Listening for Live Messages (WebSocket)**
+```ts
+await mb.initializeConnection()
+
+await mb.listenForLiveMessages({
+  messageBox: 'demo_inbox',
+  onMessage: (msg) => {
+    console.log('📩 New Message:', msg)
+  }
+})
+```
+
+3. **Listing Messages via HTTP**
+```ts
+const messages = await mb.listMessages({
+  messageBox: 'demo_inbox'
+})
+
+console.log('All Messages:', messages)
+```
+
+4. **Acknowledging Messages (Marking as Read)**
+```ts
+const toAcknowledge = messages.map(m => m.messageId.toString())
+
+await mb.acknowledgeMessage({
+  messageIds: toAcknowledge
+})
+```
+
+5. **Sending a Live Message with Fallback**
+```ts
+await mb.sendLiveMessage({
+  recipient: '028d37b941208cd6b8a4c28288eda5f2f16c2b3ab0fcb6d13c18b47fe37b971fc1',
+  messageBox: 'demo_inbox',
+  body: 'This will try WebSocket first, and fallback to HTTP if needed.'
+})
+```
+
+________________________________________
+
+## 7. API Reference
+The MessageBox Server exposes a small set of authenticated HTTP endpoints to support secure, store-and-forward messaging. All routes require identity-based authentication using @bsv/auth-express-middleware.
+
+### POST /sendMessage
+Send a message to a specific recipient’s message box.
+
+**Request Body**
 ```json
 {
   "message": {
     "recipient": "IDENTITY_PUBLIC_KEY",
     "messageBox": "payment_inbox",
     "messageId": "abc123",
-    "body": "{...}" // Stringified JSON, optionally encrypted
+    "body": "{\"amount\":10000}" // Optional encryption handled by client
   }
 }
 ```
 
-**Response:**
+**Response**
 ```json
 {
   "status": "success",
+  "messageId": "abc123",
   "message": "Your message has been sent to IDENTITY_PUBLIC_KEY"
 }
 ```
 
-### POST /listMessages
-List all messages for the authenticated user from a specific messageBox.
+Messages are persisted in the recipient’s messageBox.
 
-**Parameters:**
+messageId must be globally unique (can be derived using HMAC).
+
+Duplicate messageIds will be ignored.
+
+### POST /listMessages
+List all messages from a given messageBox owned by the authenticated identity.
+
+**Request Body**
 ```json
 {
   "messageBox": "payment_inbox"
 }
 ```
 
-**Response:**
+**Response**
 ```json
 {
   "status": "success",
   "messages": [
     {
       "messageId": "abc123",
-      "body": "{...}",
-      "sender": "SENDER_PUBLIC_KEY"
+      "body": "{\"amount\":10000}",
+      "sender": "SENDER_PUBLIC_KEY",
+      "created_at": "2024-12-01T12:00:00Z",
+      "updated_at": "2024-12-01T12:01:00Z"
     }
   ]
 }
 ```
-________________________________________
+
+Message bodies will be returned as strings (plain or encrypted).
+
+Empty arrays are returned if no messages exist or the box is unregistered.
+
 ### POST /acknowledgeMessage
+Permanently delete one or more messages after they have been processed.
 
-Acknowledge (and delete) one or more messages after processing.
-
-**Parameters:**
+**Request Body**
 ```json
 {
   "messageIds": ["abc123", "def456"]
 }
 ```
 
-**Response:**
+**Response**
 ```json
 {
   "status": "success"
 }
 ```
-________________________________________
-## WebSocket Support
-Clients can connect to MessageBox via WebSocket for live messaging:
-- **Authentication** is performed via authenticated event or initial handshake.
-- **Rooms** use the format: IDENTITYKEY-messageBoxName
-- Events:
-  - joinRoom → subscribe to a room
-  - sendMessage → send a message
-  - sendMessageAck-ROOM → receive acknowledgment
-  - sendMessage-ROOM → receive broadcasted message
-  - leaveRoom → leave a room
 
-**Example WebSocket Usage:**
+This action cannot be undone.
+
+Only messages owned by the authenticated identity can be acknowledged.
+
+Note: All requests must include an authentication header containing a signed identity token. See BRC-103 and @bsv/auth-express-middleware for details on mutual authentication.
+
+________________________________________
+
+## 8. WebSocket Support
+The MessageBox Server supports real-time messaging over WebSocket using @bsv/authsocket. This allows clients to send and receive messages instantly without polling.
+
+**Connection**
+Clients should connect to the same host and port used by the HTTP server (e.g., ws://localhost:8080) and must authenticate using their identity key.
+
+**Authentication**
+There are two ways to authenticate:
+
+During initial connection: Send the identityKey as part of the connection handshake.
+
+After connecting: Emit an authenticated event with { identityKey }.
+
+Once authenticated, the server emits authenticationSuccess. If the key is missing or invalid, authenticationFailed is returned.
+
+**Room Format**
+Each messageBox uses a room in the format:
+
+```bash
+{identityKey}-{messageBox}
+```
+For example:
+028d37b94120...-payment_inbox
+
+**Events**
+
+authenticated -	Authenticate using an identity key
+joinRoom	- Subscribe to a specific messageBox room
+sendMessage -	Send a message to a room (triggers DB storage + broadcast)
+sendMessageAck-ROOM -	Acknowledgment that the message was received by the server
+sendMessage-ROOM -	Broadcasted message to all listeners in the room
+leaveRoom	- Unsubscribe from a room
+
+**Example WebSocket Usage (Client)**
 ```ts
+import { io } from 'socket.io-client'
+
+const socket = io('ws://localhost:8080')
+
+// Step 1: Authenticate after connection
 socket.emit('authenticated', { identityKey })
+
+// Step 2: Join a messageBox room
 socket.emit('joinRoom', '028d...-payment_inbox')
+
+// Step 3: Send a message
 socket.emit('sendMessage', {
   roomId: '028d...-payment_inbox',
   message: {
     messageId: 'abc123',
     recipient: '028d...',
-    body: '{...}'
+    body: JSON.stringify({ hello: 'world' })
   }
 })
+
+// Step 4: Listen for acknowledgment and broadcast
+socket.on('sendMessageAck-028d...-payment_inbox', (ack) => {
+  console.log('Message acknowledged:', ack)
+})
+
+socket.on('sendMessage-028d...-payment_inbox', (msg) => {
+  console.log('New message received:', msg)
+})
 ```
+
+**Notes**
+Messages sent via WebSocket are also persisted in the database.
+
+If a room is not joined or the recipient isn't online, delivery is deferred until the recipient polls via HTTP.
+
+If ENABLE_WEBSOCKETS is not set to 'true', this functionality is disabled.
+
 ________________________________________
-## Overlay Integration
+
+## 9. Overlay Integration
 MessageBox participates in the SHIP overlay network by:
 - **Broadcasting advertisements** mapping identity keys to reachable hosts
 - **Verifying incoming advertisements** using [@bsv/overlay](https://www.npmjs.com/package/@bsv/overlay)
@@ -129,26 +382,12 @@ MessageBox participates in the SHIP overlay network by:
 
 This allows clients to route messages to other MessageBox servers if the recipient is remote.
 ________________________________________
-### Authentication
+## 10. Authentication
 All routes require the Authorization header containing the user's public key (identityKey).
 WebSocket connections also require authentication using the [@bsv/authsocket](https://www.npmjs.com/package/@bsv/authsocket) protocol.
 ________________________________________
-### Environment Variables
-**Variables**
 
-NODE_ENV - Set to development, staging, or production
-
-PORT - Port for the HTTP server (default: 8080 or 3000)
-
-SERVER_PRIVATE_KEY - 256-bit hex private key used for signing/auth
-
-WALLET_STORAGE_URL - URL of wallet-storage service for identity handling
-
-ENABLE_WEBSOCKETS	- Set to 'true' to enable WebSocket transport
-
-LOGGING_ENABLED	- Enable verbose logs for debugging
-________________________________________
-### Scripts
+## 11. Scripts
 ```bash
 npm run dev      # Start with hot reloading
 npm run start    # Start in production
@@ -156,41 +395,10 @@ npm run test     # Run all tests
 npm run build    # Compile documentation
 ```
 ________________________________________
-### Spinning Up (Local Dev)
-1.	Clone the repo
-2.	Install dependencies: npm install
-3.	Set up .env with:
-```env
-SERVER_PRIVATE_KEY=...
-WALLET_STORAGE_URL=http://localhost:3001
-ENABLE_WEBSOCKETS=true
-```
-4.	Run the database: docker compose up -d
-5.	Start server: npm run dev
 
-Default ports:
-
-MessageBox Server	8080
-
-MySQL Database	3001
-
-PHPMyAdmin	3003
-________________________________________
-
-### Example Message Payload (Encrypted)
-```json
-{
-  "encrypted": true,
-  "algorithm": "curvepoint-aes",
-  "senderPublicKey": "02abc...",
-  "encryptedSymmetricKey": [ ... ],
-  "encryptedMessage": [ ... ]
-}
-```
-________________________________________
-### Deploying
+## 12. Deploying
 See DEPLOYING.md for tips on deploying to Google Cloud, LARS, or Docker.
 ________________________________________
-### License
-This project is released under the Open BSV License.
+## 13. License
+This project is released under the [Open BSV License](https://www.bsvlicense.org/).
 
