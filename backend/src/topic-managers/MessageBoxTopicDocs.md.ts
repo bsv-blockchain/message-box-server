@@ -7,7 +7,7 @@ The **MessageBox Topic Manager** defines SHIP overlay admittance rules for the \
 
 ## Overview
 
-This Topic Manager is responsible for filtering and validating outputs that represent host advertisements. Each advertisement is a [PushDrop]-encoded output containing a host URL, timestamp, nonce, and a digital signature. The Topic Manager ensures that only valid advertisements signed by the advertising identity key are admitted.
+This Topic Manager is responsible for filtering and validating outputs that represent host advertisements. Each advertisement is a [PushDrop]-encoded output containing an identityKey, host URL, and a digital signature. The Topic Manager ensures that only valid advertisements signed by the advertising identity key are admitted.
 
 ---
 
@@ -15,15 +15,13 @@ This Topic Manager is responsible for filtering and validating outputs that repr
 
 To be admitted into the \`tm_messagebox\` topic, an output must:
 
-1. Contain a valid PushDrop script with 5 fields:
+1. Contain a valid PushDrop script with 3 fields:
    - Identity Key (UTF-8)
    - Host (UTF-8)
-   - ISO Timestamp (UTF-8)
-   - Nonce (UTF-8)
    - Signature (binary)
 2. Have a valid signature that matches the concatenated data fields:
    \`\`\`
-   data = host || timestamp || nonce
+   data = identityKey + host
    \`\`\`
 3. Be signed using protocol ID \`[0, "MBSERVEAD"]\` and key ID \`"1"\`.
 
