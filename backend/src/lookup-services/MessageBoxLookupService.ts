@@ -20,14 +20,14 @@ import {
 
 import { MessageBoxStorage } from './MessageBoxStorage.js'
 import { PushDrop, Script, Utils } from '@bsv/sdk'
-import docs from './MessageBoxLookupDocs.md.js'
-import { MongoClient, Db } from 'mongodb'
+import docs from '../lookup-services/MessageBoxLookupDocs.md.js'
+import { Db } from 'mongodb'
 
 /**
  * Implements the SHIP-compatible overlay `LookupService` for MessageBox advertisements.
  */
 class MessageBoxLookupService implements LookupService {
-  constructor(public storage: MessageBoxStorage) {}
+  constructor(public storage: MessageBoxStorage) { }
 
   /**
   * Called when a new output is added that may contain an advertisement.
@@ -46,31 +46,23 @@ class MessageBoxLookupService implements LookupService {
   */
   async outputAdded?(txid: string, outputIndex: number, outputScript: Script, topic: string): Promise<void> {
     if (topic !== 'tm_messagebox') return;
-  
+
     try {
       const decoded = PushDrop.decode(outputScript);
-      const [identityKeyBuf, hostBuf, timestampBuf, nonceBuf] = decoded.fields;
-      const signatureBuf = decoded.fields.at(-1)!;
-  
+      const [identityKeyBuf, hostBuf] = decoded.fields;
+
       const ad = {
-        identityKey: Utils.toHex(identityKeyBuf),
-        host: Utils.toUTF8(hostBuf),
-        timestamp: Utils.toUTF8(timestampBuf),
-        nonce: Utils.toUTF8(nonceBuf),
-        signature: Utils.toHex(signatureBuf) // Store as hex
+        identityKey: Utils.toUTF8(identityKeyBuf),
+        host: Utils.toUTF8(hostBuf)
       };
-  
+
       console.log('[LOOKUP] Decoded advertisement:', ad);
-  
+
       await this.storage.storeRecord(
         ad.identityKey,
         ad.host,
         txid,
-        outputIndex,
-        ad.timestamp,
-        ad.nonce,
-        ad.signature,
-        ad
+        outputIndex
       );
     } catch (e) {
       console.error('[LOOKUP ERROR] Failed to process outputAdded:', e);
@@ -129,12 +121,7 @@ class MessageBoxLookupService implements LookupService {
       throw new Error('identityKey query missing')
     }
 
-    const hosts = await this.storage.findHostsForIdentity(query.identityKey)
-
-    return {
-      type: 'freeform',
-      result: { hosts }
-    }
+    return await this.storage.findHostsForIdentity(query.identityKey)
   }
 
   /**

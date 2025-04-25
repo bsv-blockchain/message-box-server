@@ -53,7 +53,7 @@ export interface ForwardResult {
 }
 
 /**
- * Representation of a row in the `overlay_ads` database table.
+ * Representation of a row in the `messagebox_advertisement` database table.
  */
 export interface OverlayAdRow {
   identitykey: string

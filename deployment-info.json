@@ -2,17 +2,13 @@
   "schema": "bsv-app",
   "schemaVersion": "1.0",
   "topicManagers": {
-    "tm_messagebox": "./src/overlay/services/MessageBoxTopicManager.ts"
+    "tm_messagebox": "./src/topicManagers/MessageBoxTopicManager.ts"
   },
   "lookupServices": {
     "ls_messagebox": {
-      "serviceFactory": "./src/overlay/services/MessageBoxLookupService.ts",
+      "serviceFactory": "./src/lookupServices/MessageBoxLookupServiceFactory.ts",
       "hydrateWith": "mongo"
     }
-  },
-  "contracts": {
-    "language": "sCrypt",
-    "baseDirectory": "./"
   },
   "configs": [
     {
@@ -21,30 +17,17 @@
       "provider": "LARS",
       "run": [
         "backend"
-      ],
-      "spvSource": "trust"
+      ]
     },
     {
-      "name": "atx",
-      "provider": "CARS",
-      "CARSCloudURL": "https://cars.atx.systems",
-      "projectID": "28aa5632cc9f2974234bba40ff00f20d",
-      "network": "mainnet",
-      "deploy": [
-        "backend"
-      ],
-      "frontendHostingMethod": "HTTPS"
-    },
-    {
-      "name": "babbage",
+      "name": "messagebox_overlay",
       "provider": "CARS",
       "CARSCloudURL": "https://cars.babbage.systems",
-      "projectID": "161a4f0f091010a0f8a34a5d1d1b9dd7",
+      "projectID": "59d6f2d7e6314d0b188e11df0f516478",
       "network": "mainnet",
       "deploy": [
         "backend"
-      ],
-      "frontendHostingMethod": "HTTPS"
+      ]
     }
   ]
 }

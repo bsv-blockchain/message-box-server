@@ -1,4 +1,4 @@
-import type { Advertisement } from '../../overlay/types.js'
+import type { Advertisement } from '../../../backend/src/overlay/types.js'
 
 export const baseMockAd = {
   identityKey: 'mock-key',
@@ -15,7 +15,7 @@ export const mockAd = (): Advertisement => ({
   timestamp: new Date().toISOString()
 })
 
-export async function broadcastAdvertisement (): Promise<{
+export async function broadcastAdvertisement(): Promise<{
   advertisement: Advertisement
   txid: string
 }> {

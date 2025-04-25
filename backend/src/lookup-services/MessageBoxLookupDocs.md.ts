@@ -39,13 +39,13 @@ When a matching output is spent or deleted, the associated advertisement is remo
 
 ### Service Name
 
-\`lsmessagebox\`
+\`ls_messagebox\`
 
 ### Query Format
 
 \`\`\`json
 {
-  "service": "lsmessagebox",
+  "service": "ls_messagebox",
   "query": {
     "identityKey": "<identity key string>"
   }

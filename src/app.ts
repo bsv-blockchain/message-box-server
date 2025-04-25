@@ -152,6 +152,9 @@ export async function useRoutes (): Promise<void> {
     }
   })
 
+  // Enable Swagger docs
+  setupSwagger(app)
+
   await walletReady
   if (_wallet == null) {
     throw new Error('Wallet is not initialized for auth middleware')
@@ -185,7 +188,4 @@ export async function useRoutes (): Promise<void> {
       )
     }
   })
-
-  // Enable Swagger docs
-  setupSwagger(app)
 }
