@@ -17,3 +17,4 @@ dist
 local-data
 data
 coverage
+cars_artifact*
