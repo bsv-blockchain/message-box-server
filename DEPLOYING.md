@@ -55,7 +55,7 @@ npm install
 2.	Start MySQL database (you can use Docker or your local MySQL):
     - If using Docker:
     ```bash
-    docker compose up
+    docker compose up --build
     ```
     - Otherwise, ensure a database is running and matches your knexfile.js.
 3.	Set up environment variables:
@@ -99,7 +99,7 @@ ________________________________________
 ### Docker Usage
 Use Docker only if you're running a local test instance:
 ```bash
-docker compose up
+docker compose up -- build
 ```
 - Web server runs on port 3002
 - Database runs on port 3001

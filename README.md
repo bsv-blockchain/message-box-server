@@ -3,40 +3,35 @@
 A secure, peer-to-peer message routing server designed for the Bitcoin SV ecosystem. Supports both HTTP and WebSocket message transport, encrypted payloads, identity-based routing, and overlay advertisement via SHIP.
 
 ## Table of Contents
-
-1. [Introduction](#1-introduction)  
-2. [Overview](#2-overview)  
-3. [Concepts](#3-concepts)  
-4. [Environment Variables](#4-environment-variables)  
-5. [Quick Start](#5-quick-start)  
-6. [Examples](#6-examples)  
-7. [API Reference](#7-api-reference)  
+ 
+1. [Overview](#1-overview)  
+2. [Concepts](#2-concepts)  
+3. [Environment Variables](#3-environment-variables)  
+4. [Quick Start](#4-quick-start)  
+5. [Examples](#5-examples)  
+6. [API Reference](#6-api-reference)  
    - [POST /sendMessage](#post-sendmessage)  
    - [POST /listMessages](#post-listmessages)  
    - [POST /acknowledgeMessage](#post-acknowledgemessage)  
-8. [WebSocket Support](#8-websocket-support)  
-9. [Authentication](#9-authentication)  
-10. [Scripts](#10-scripts)  
-11. [Deploying](#11-deploying)  
-12. [License](#12-license)
+7. [WebSocket Support](#7-websocket-support)  
+8. [Authentication](#8-authentication)  
+9. [Scripts](#9-scripts)  
+10. [Deploying](#10-deploying)  
+11. [License](#11-license)
 
-## 1. Introduction
-
-MessageBox Server acts as a secure relay for peer-to-peer messages. Clients send messages to named "message boxes" associated with an identity key. Messages are encrypted using BRC-2, authenticated using BRC-103, and stored until the recipient retrieves and acknowledges them.
-
-## 2. Overview
+## 1. Overview
 
 MessageBox is a peer-to-peer messaging API that enables secure, encrypted, and authenticated communication between users on the MetaNet. This is primarily achieved through a message-box architecture combined with optional overlay routing and real-time WebSocket transport.
 
 When a user sends a message, they must specify the messageBox type and the intended recipient (an identity key). This design allows for protocol-specific messageBox types to be defined at higher application layers, while maintaining clear separation of messages by type and recipient. Each message is routed into a box associated with a specific recipient and use case.
 
-Security is a critical aspect of MessageBox. It relies on [AuthExpress middleware](https://github.com/bitcoin-sv/auth-express-middleware) to ensure that only the recipient can access and acknowledge their own messages. In addition, encrypted payloads are supported using authenticated asymmetric key exchange with symmetric encryption, allowing messages to be securely transmitted and decrypted by the recipient.
+Security is a critical aspect of MessageBox. It relies on [AuthExpress middleware](https://github.com/bitcoin-sv/auth-express-middleware) to ensure that only the recipient can access and acknowledge their own messages. Encrypted payloads are supported automatically following [BRC-2](https://github.com/bitcoin-sv/BRCs/blob/master/wallet/0002.md), using secure symmetric encryption between authenticated peers.
 
 MessageBox also supports [@bsv/authsocket](https://www.npmjs.com/package/@bsv/authsocket) for real-time authenticated WebSocket communication. This enables clients to receive messages instantly and interact with rooms associated with their identity key and chosen messageBox.
 
 To interact with MessageBox, use [MessageBoxClient](https://github.com/bitcoin-sv/p2p), the client-side library designed to handle authentication, encryption, WebSocket communication, and overlay resolution.
 
-## 3. Concepts
+## 2. Concepts
 - **Identity Key:** All messages are addressed to an identity key (a public key)
 - **MessageBox:** A named message stream associated with an identity key (e.g., payment_inbox)
 - **Encrypted Payloads:** Messages can be AES-encrypted and include metadata
@@ -44,7 +39,7 @@ To interact with MessageBox, use [MessageBoxClient](https://github.com/bitcoin-s
 - **Acknowledgment:** Messages must be acknowledged to be removed from the database
 ________________________________________
 
-## 4. Environment Variables
+## 3. Environment Variables
 **Variables**
 
 NODE_ENV - Set to development, staging, or production
@@ -71,7 +66,7 @@ MIGRATE_KEY - (Optional) Key used to authorize protected migration operations, i
 
 ________________________________________
 
-## 5. Quick Start
+## 4. Quick Start
 
 To run the MessageBox Server locally or in a hosted environment, follow the steps below.
 
@@ -114,6 +109,9 @@ npm install
 ```bash
 npm run dev
 ```
+**Note:**  
+MessageBox Server requires a MySQL database for storing messages.  
+See [Deploying](#10-deploying) for instructions on setting up the required database locally or in production environments.
 
 This launches the Express-based MessageBox Server on the configured port (default: 8080 or 3000 in production). WebSocket support will be enabled if ENABLE_WEBSOCKETS=true in your environment.
 
@@ -123,7 +121,7 @@ You're now ready to send and receive messages using the MessageBoxClient, test e
 
 ________________________________________
 
-## 6. Examples
+## 5. Examples
 
 This section provides quick examples for sending, listing, and acknowledging messages using the MessageBoxClient library.
 
@@ -186,7 +184,7 @@ await mb.sendLiveMessage({
 
 ________________________________________
 
-## 7. API Reference
+## 6. API Reference
 The MessageBox Server exposes a small set of authenticated HTTP endpoints to support secure, store-and-forward messaging. All routes require identity-based authentication using @bsv/auth-express-middleware.
 
 ### POST /sendMessage
@@ -275,7 +273,7 @@ Mutual authentication is handled transparently by [@bsv/auth-express-middleware]
 
 ________________________________________
 
-## 8. WebSocket Support
+## 7. WebSocket Support
 The MessageBox Server supports real-time messaging over WebSocket using @bsv/authsocket. This allows clients to send and receive messages instantly without polling.
 
 **Connection**
@@ -348,7 +346,7 @@ If a room is not joined or the recipient isn't online, delivery is deferred unti
 If ENABLE_WEBSOCKETS is not set to 'true', this functionality is disabled.
 
 ________________________________________
-## 9. Authentication
+## 8. Authentication
 All HTTP and WebSocket communications use full mutual authentication based on [BRC-103](https://github.com/bitcoin-sv/BRCs/blob/master/peer-to-peer/0103.md).
 - HTTP requests are authenticated using [@bsv/auth-express-middleware](https://www.npmjs.com/package/@bsv/auth-express-middleware), with automatically signed and verified headers.
 - WebSocket connections are authenticated using [@bsv/authsocket](https://www.npmjs.com/package/@bsv/authsocket), signing the WebSocket handshake and room interactions.
@@ -357,7 +355,7 @@ Clients authenticate automatically when using the [MessageBoxClient](https://git
 
 ________________________________________
 
-## 10. Scripts
+## 9. Scripts
 ```bash
 npm run dev      # Start with hot reloading
 npm run start    # Start in production
@@ -366,9 +364,9 @@ npm run build    # Compile documentation
 ```
 ________________________________________
 
-## 11. Deploying
-See DEPLOYING.md for tips on deploying to Google Cloud, LARS, or Docker.
+## 10. Deploying
+See DEPLOYING.md for tips.
 ________________________________________
-## 12. License
+## 11. License
 This project is released under the [Open BSV License](https://www.bsvlicense.org/).
 
