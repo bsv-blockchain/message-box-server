@@ -206,6 +206,7 @@ export default {
           (typeof message.body !== 'object' || message.body === null)) ||
         (typeof message.body === 'string' && message.body.trim() === '')
       ) {
+        console.error('[ERROR] Invalid message body:', message.body)
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_MESSAGE_BODY',
