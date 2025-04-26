@@ -37,6 +37,8 @@ import type { WalletInterface } from '@bsv/sdk'
 import { createAuthMiddleware } from '@bsv/auth-express-middleware'
 import { createPaymentMiddleware } from '@bsv/payment-express-middleware'
 import { setupSwagger } from './swagger.js'
+import * as crypto from 'crypto'
+(global.self as any) = { crypto }
 
 dotenv.config()
 

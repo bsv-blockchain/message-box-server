@@ -23,6 +23,8 @@ import { createServer } from 'http'
 import { PublicKey } from '@bsv/sdk'
 import { Logger } from './utils/logger.js'
 import { AuthSocketServer } from '@bsv/authsocket'
+import * as crypto from 'crypto'
+(global.self as any) = { crypto }
 
 dotenv.config()
 
