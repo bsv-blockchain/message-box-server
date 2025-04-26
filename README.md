@@ -270,7 +270,8 @@ This action cannot be undone.
 
 Only messages owned by the authenticated identity can be acknowledged.
 
-Note: All requests must include an authentication header containing a signed identity token. See BRC-103 and @bsv/auth-express-middleware for details on mutual authentication.
+Note: All requests must include automatically signed and verified headers following [BRC-103](https://github.com/bitcoin-sv/BRCs/blob/master/peer-to-peer/0103.md) authentication.
+Mutual authentication is handled transparently by [@bsv/auth-express-middleware](https://www.npmjs.com/package/@bsv/auth-express-middleware).
 
 ________________________________________
 
@@ -348,8 +349,12 @@ If ENABLE_WEBSOCKETS is not set to 'true', this functionality is disabled.
 
 ________________________________________
 ## 9. Authentication
-All routes require the Authorization header containing the user's public key (identityKey).
-WebSocket connections also require authentication using the [@bsv/authsocket](https://www.npmjs.com/package/@bsv/authsocket) protocol.
+All HTTP and WebSocket communications use full mutual authentication based on [BRC-103](https://github.com/bitcoin-sv/BRCs/blob/master/peer-to-peer/0103.md).
+- HTTP requests are authenticated using [@bsv/auth-express-middleware](https://www.npmjs.com/package/@bsv/auth-express-middleware), with automatically signed and verified headers.
+- WebSocket connections are authenticated using [@bsv/authsocket](https://www.npmjs.com/package/@bsv/authsocket), signing the WebSocket handshake and room interactions.
+
+Clients authenticate automatically when using the [MessageBoxClient](https://github.com/bitcoin-sv/p2p) library. Manual integrations must follow BRC-103 signing conventions.
+
 ________________________________________
 
 ## 10. Scripts
