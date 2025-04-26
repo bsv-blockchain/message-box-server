@@ -365,7 +365,7 @@ npm run build    # Compile documentation
 ________________________________________
 
 ## 10. Deploying
-See DEPLOYING.md for tips.
+See [DEPLOYING.md](./DEPLOYING.md) for tips.
 ________________________________________
 ## 11. License
 This project is released under the [Open BSV License](https://www.bsvlicense.org/).
