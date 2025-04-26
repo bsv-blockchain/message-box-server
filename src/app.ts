@@ -88,7 +88,7 @@ export const walletReady = new Promise<void>((resolve) => {
  * @returns {Promise<void>} Resolves when the wallet is initialized.
  * @throws If SERVER_PRIVATE_KEY is missing or invalid.
  */
-export async function initializeWallet(): Promise<void> {
+export async function initializeWallet (): Promise<void> {
   if (SERVER_PRIVATE_KEY == null || SERVER_PRIVATE_KEY.trim() === '') {
     throw new Error('SERVER_PRIVATE_KEY is not defined in environment variables.')
   }
@@ -109,7 +109,7 @@ export async function initializeWallet(): Promise<void> {
  * @returns {Promise<WalletInterface>} The initialized wallet client
  * @throws {Error} If called before the wallet is initialized
  */
-export async function getWallet(): Promise<WalletInterface> {
+export async function getWallet (): Promise<WalletInterface> {
   await walletReady
   if (_wallet == null) {
     throw new Error('Wallet has not been initialized yet.')
@@ -137,7 +137,7 @@ export const appReady = (async () => {
  * @returns {Promise<void>} Once all middleware and routes are mounted
  * @throws If wallet is not available when needed
  */
-export async function useRoutes(): Promise<void> {
+export async function useRoutes (): Promise<void> {
   // Parse incoming JSON bodies with a high limit
   app.use(bodyParser.json({ limit: '1gb', type: 'application/json' }))
 
@@ -175,7 +175,7 @@ export async function useRoutes(): Promise<void> {
       wallet: _wallet,
       calculateRequestPrice: async (req: Request) => {
         if (req.url.includes('/sendMessage')) {
-          // TODO: Configure a custom price calculation as needed.         
+          // TODO: Configure a custom price calculation as needed.
         }
         return 0
       }
