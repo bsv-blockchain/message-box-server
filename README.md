@@ -15,17 +15,14 @@ A secure, peer-to-peer message routing server designed for the Bitcoin SV ecosys
    - [POST /listMessages](#post-listmessages)  
    - [POST /acknowledgeMessage](#post-acknowledgemessage)  
 8. [WebSocket Support](#8-websocket-support)  
-9. [Overlay Integration](#9-overlay-integration)  
-10. [Authentication](#10-authentication)  
-11. [Scripts](#11-scripts)  
-12. [Deploying](#12-deploying)  
-13. [License](#13-license)
+9. [Authentication](#9-authentication)  
+10. [Scripts](#10-scripts)  
+11. [Deploying](#11-deploying)  
+12. [License](#12-license)
 
 ## 1. Introduction
 
 MessageBox Server acts as a secure relay for peer-to-peer messages. Clients send messages to named "message boxes" associated with an identity key. Messages are encrypted using BRC-2, authenticated using BRC-103, and stored until the recipient retrieves and acknowledges them.
-
-Overlay functionality allows clients to discover where a user's message box is hosted via SHIP.
 
 ## 2. Overview
 
@@ -37,15 +34,12 @@ Security is a critical aspect of MessageBox. It relies on [AuthExpress middlewar
 
 MessageBox also supports [@bsv/authsocket](https://www.npmjs.com/package/@bsv/authsocket) for real-time authenticated WebSocket communication. This enables clients to receive messages instantly and interact with rooms associated with their identity key and chosen messageBox.
 
-For more flexible routing, MessageBox integrates with the [@bsv/overlay](https://www.npmjs.com/package/@bsv/overlay) protocol, enabling public advertisement of MessageBox hosts via SHIP broadcasts. Clients can query these advertisements to route messages to remote servers if a direct messageBox is not available.
-
 To interact with MessageBox, use [MessageBoxClient](https://github.com/bitcoin-sv/p2p), the client-side library designed to handle authentication, encryption, WebSocket communication, and overlay resolution.
 
 ## 3. Concepts
 - **Identity Key:** All messages are addressed to an identity key (a public key)
 - **MessageBox:** A named message stream associated with an identity key (e.g., payment_inbox)
 - **Encrypted Payloads:** Messages can be AES-encrypted and include metadata
-- **Overlay Routing:** MessageBox instances can advertise availability via the SHIP overlay protocol
 - **Live Messaging:** Clients can join WebSocket rooms and receive messages in real-time
 - **Acknowledgment:** Messages must be acknowledged to be removed from the database
 ________________________________________
@@ -66,12 +60,6 @@ SERVER_PRIVATE_KEY - Required. 256-bit hex private key used for identity, signin
 WALLET_STORAGE_URL - URL of a wallet-storage service that stores key derivation metadata
 
 NETWORK - Target network chain (e.g., main, test, or regtest)
-
-BSV_NETWORK - BSV overlay preset to use, such as local for SHIP dev/test indexing
-
-MONGO_URI - MongoDB connection URI used for storing overlay advertisements
-
-MONGO_DB - MongoDB database name for overlay lookup storage
 
 KNEX_DB_CONNECTION - (Optional) JSON-formatted connection string for MySQL/Knex (if not using default)
 
@@ -106,8 +94,6 @@ SERVER_PRIVATE_KEY – your root private key for identity/auth
 
 WALLET_STORAGE_URL – points to a wallet-storage instance
 
-MONGO_URI and MONGO_DB – for storing overlay advertisements
-
 (Optional) KNEX_DB_CONNECTION – if you're not using the default MySQL config
 
 For local development, use:
@@ -118,24 +104,12 @@ NODE_ENV=development
 BSV_NETWORK=local
 ```
 
-Note: If you're re-running migrations locally using the instance spun up by LARS, you'll need to truncate the relevant MySQL tables manually before proceeding.
-
 3. **Install Dependencies**
 ```bash
 npm install
 ```
 
-4. **Run LARS or CARS (Overlay Service)**
-To start the overlay system locally (recommended for development), use:
-
-```bash
-npm run start
-```
-
-This starts LARS, the local overlay runtime. For production or distributed overlay environments, use CARS instead.
-
-5. **Start the Server**
-Once LARS or your overlay is running:
+4. **Start the Server**
 
 ```bash
 npm run dev
@@ -151,7 +125,7 @@ ________________________________________
 
 ## 6. Examples
 
-This section provides quick examples for sending, listing, and acknowledging messages using the MessageBoxClient library. These examples assume you’ve already configured your .env, started LARS (or CARS), and launched the MessageBox Server.
+This section provides quick examples for sending, listing, and acknowledging messages using the MessageBoxClient library.
 
 1. **Sending a Message**
 ```ts
@@ -178,7 +152,7 @@ await mb.initializeConnection()
 await mb.listenForLiveMessages({
   messageBox: 'demo_inbox',
   onMessage: (msg) => {
-    console.log('📩 New Message:', msg)
+    console.log('New Message:', msg)
   }
 })
 ```
@@ -225,7 +199,7 @@ Send a message to a specific recipient’s message box.
     "recipient": "IDENTITY_PUBLIC_KEY",
     "messageBox": "payment_inbox",
     "messageId": "abc123",
-    "body": "{\"amount\":10000}" // Optional encryption handled by client
+    "body": "{\"amount\":10000}"
   }
 }
 ```
@@ -373,21 +347,12 @@ If a room is not joined or the recipient isn't online, delivery is deferred unti
 If ENABLE_WEBSOCKETS is not set to 'true', this functionality is disabled.
 
 ________________________________________
-
-## 9. Overlay Integration
-MessageBox participates in the SHIP overlay network by:
-- **Broadcasting advertisements** mapping identity keys to reachable hosts
-- **Verifying incoming advertisements** using [@bsv/overlay](https://www.npmjs.com/package/@bsv/overlay)
-- **Responding to SHIP queries** via a LookupService
-
-This allows clients to route messages to other MessageBox servers if the recipient is remote.
-________________________________________
-## 10. Authentication
+## 9. Authentication
 All routes require the Authorization header containing the user's public key (identityKey).
 WebSocket connections also require authentication using the [@bsv/authsocket](https://www.npmjs.com/package/@bsv/authsocket) protocol.
 ________________________________________
 
-## 11. Scripts
+## 10. Scripts
 ```bash
 npm run dev      # Start with hot reloading
 npm run start    # Start in production
@@ -396,9 +361,9 @@ npm run build    # Compile documentation
 ```
 ________________________________________
 
-## 12. Deploying
+## 11. Deploying
 See DEPLOYING.md for tips on deploying to Google Cloud, LARS, or Docker.
 ________________________________________
-## 13. License
+## 12. License
 This project is released under the [Open BSV License](https://www.bsvlicense.org/).
 

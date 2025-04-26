@@ -1,12 +1,11 @@
 # MessageBox Server Deployment Guide
-This guide covers how to deploy the MessageBox Server — a secure peer-to-peer message relay supporting authenticated HTTP and WebSocket communication, encrypted payloads, and optional overlay advertisement using SHIP.
+This guide covers how to deploy the MessageBox Server — a secure peer-to-peer message relay supporting authenticated HTTP and WebSocket communication and encrypted payloads.
 ________________________________________
 ### Overview
 The MessageBox Server is a node-based Express server that enables identity-authenticated messaging over HTTP and WebSocket. Key features:
 - Authenticated message sending and receiving
 - Message box creation and routing by identity key
 - WebSocket-based real-time delivery
-- SHIP-compatible overlay host advertisement (optional)
 - AES-encrypted message payloads (handled by clients)
 ________________________________________
 ### Requirements
@@ -19,8 +18,7 @@ ________________________________________
 ### Project Structure
 ```bash
 .
-├── src/                     # Server source files (Express app, routes, WebSocket, logger)
-├── backend/                # SHIP-compatible overlay service (used by LARS)
+├── src/                    # Server source files (Express app, routes, WebSocket, logger)
 ├── knexfile.js             # DB connection settings
 ├── app.ts                  # Express and route setup
 ├── index.ts                # Server entry point with WebSocket support
@@ -113,7 +111,6 @@ ________________________________________
 ### Related Projects
 - [MessageBoxClient](https://github.com/bitcoin-sv/p2p)
 - [WalletClient](https://github.com/bitcoin-sv)
-- [Overlay Express](https://www.npmjs.com/package/@bsv/overlay-express)
 - [Authrite](https://www.npmjs.com/package/@bsv/auth-express-middleware)
 ________________________________________
 📄 License
