@@ -32,11 +32,13 @@ import { Logger } from './utils/logger.js'
 import sendMessageRoute from './routes/sendMessage.js'
 import { Setup } from '@bsv/wallet-toolbox'
 import knexLib, { Knex } from 'knex'
-import knexConfig from './knexfile.js'
+import knexConfig from '../knexfile.js'
 import type { WalletInterface } from '@bsv/sdk'
-import { AuthRequest, createAuthMiddleware } from '@bsv/auth-express-middleware'
+import { createAuthMiddleware } from '@bsv/auth-express-middleware'
 import { createPaymentMiddleware } from '@bsv/payment-express-middleware'
 import { setupSwagger } from './swagger.js'
+import * as crypto from 'crypto'
+(global.self as any) = { crypto }
 
 dotenv.config()
 

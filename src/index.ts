@@ -23,6 +23,8 @@ import { createServer } from 'http'
 import { PublicKey } from '@bsv/sdk'
 import { Logger } from './utils/logger.js'
 import { AuthSocketServer } from '@bsv/authsocket'
+import * as crypto from 'crypto'
+(global.self as any) = { crypto }
 
 dotenv.config()
 
@@ -46,10 +48,10 @@ const parsedEnvPort = Number(process.env.HTTP_PORT)
 const HTTP_PORT: number = NODE_ENV !== 'development'
   ? 3000
   : !isNaN(parsedPort) && parsedPort > 0
-      ? parsedPort
-      : !isNaN(parsedEnvPort) && parsedEnvPort > 0
-          ? parsedEnvPort
-          : 8080
+    ? parsedPort
+    : !isNaN(parsedEnvPort) && parsedEnvPort > 0
+      ? parsedEnvPort
+      : 8080
 
 // Ensure private key is available before proceeding
 if (SERVER_PRIVATE_KEY === undefined || SERVER_PRIVATE_KEY === null || SERVER_PRIVATE_KEY.trim() === '') {

@@ -11,7 +11,7 @@ const config: Knex.Config = {
   connection: connectionConfig,
   useNullAsDefault: true,
   migrations: {
-    directory: './src/migrations'
+    directory: './out/src/migrations'
   },
   pool: {
     min: 0,
