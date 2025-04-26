@@ -34,7 +34,7 @@ import { Setup } from '@bsv/wallet-toolbox'
 import knexLib, { Knex } from 'knex'
 import knexConfig from './knexfile.js'
 import type { WalletInterface } from '@bsv/sdk'
-import { AuthRequest, createAuthMiddleware } from '@bsv/auth-express-middleware'
+import { createAuthMiddleware } from '@bsv/auth-express-middleware'
 import { createPaymentMiddleware } from '@bsv/payment-express-middleware'
 import { setupSwagger } from './swagger.js'
 
@@ -164,7 +164,8 @@ export async function useRoutes(): Promise<void> {
 
   app.use(
     createAuthMiddleware({
-      wallet: _wallet
+      wallet: _wallet,
+      logger: console
     })
   )
 

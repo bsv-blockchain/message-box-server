@@ -47,6 +47,7 @@ jobs:
           WALLET_STORAGE_URL: ${{ env.CURRENT_BRANCH == 'production' && secrets.PROD_WALLET_STORAGE_URL || secrets.STAGING_WALLET_STORAGE_URL }}
           SERVER_PRIVATE_KEY: ${{ env.CURRENT_BRANCH == 'production' && secrets.PROD_SERVER_PRIVATE_KEY || secrets.STAGING_SERVER_PRIVATE_KEY }}
           KNEX_DB_CONNECTION: ${{ env.CURRENT_BRANCH == 'production' && secrets.PROD_KNEX_DB_CONNECTION || secrets.STAGING_KNEX_DB_CONNECTION }}
+          LOGGING_ENABLED: ${{ env.CURRENT_BRANCH == 'production' && secrets.PROD_LOGGING_ENABLED || secrets.STAGING_LOGGING_ENABLED }}
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v1
         with:

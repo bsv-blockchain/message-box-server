@@ -24,6 +24,7 @@ perl -E'
     KNEX_DB_CONNECTION \
     BSV_NETWORK \
     WALLET_STORAGE_URL \
+    LOGGING_ENABLED \
     SERVER_PRIVATE_KEY >> $1
 
 echo "Built! Contents of $1:"
