@@ -1,5 +1,5 @@
 node_modules
-data/peerserv-mysql-data
+data/messagebox-backend-mysql-data
 data/database.sqlite
 .env
 .DS_Store

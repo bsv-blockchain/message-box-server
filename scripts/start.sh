@@ -7,7 +7,7 @@ then
   exit
 fi
 
-until nc -z -v -w30 peerserv-mysql 3001
+until nc -z -v -w30 messagebox-backend-mysql 3001
 do
   echo "Waiting for database connection..."
   sleep 1

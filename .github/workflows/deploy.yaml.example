@@ -7,9 +7,8 @@ on:
 
 env:
   CURRENT_BRANCH: ${{ github.ref_name == 'production' && 'production' || 'master' }}
-  CWI_NPM_TOKEN: ${{ secrets.CWI_NPM_TOKEN }}
   GCR_HOST: us.gcr.io
-  GOOGLE_PROJECT_ID: babbage-private
+  GOOGLE_PROJECT_ID: example-project-id
   GCR_IMAGE_NAME: messagebox-server
 
 jobs:

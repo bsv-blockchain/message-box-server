@@ -13,9 +13,9 @@ services:
     environment:
       HOSTING_DOMAIN: 'http://localhost:8080'
       PORT: 8080
-      SERVER_PRIVATE_KEY: 'f8b4b466417e3fede5f95cb0651fb6371c3c9c0753a3e15c1c30155461d03c18'
+      SERVER_PRIVATE_KEY: 'f8b4b466417e3fede5f95cb0651fb6371c3c9c0753a3e15c1c30155461d03c18' # EXAMPLE TEST KEY
       KNEX_DB_CLIENT: mysql
-      KNEX_DB_CONNECTION: '{"port":3306,"host":"backend-mysql","user":"root","password":"test","database":"peerserv"}'
+      KNEX_DB_CONNECTION: '{"port":3306,"host":"backend-mysql","user":"root","password":"test","database":"messagebox-backend"}'
       NODE_ENV: development
       WALLET_STORAGE_URL: 'https://storage.babbage.systems'
     depends_on:
@@ -34,7 +34,7 @@ services:
       MYSQL_HOST: "127.0.0.1"
       MYSQL_TCP_PORT: 3306
       MYSQL_ROOT_PASSWORD: "test"
-      MYSQL_DATABASE: "peerserv"
+      MYSQL_DATABASE: "messagebox-backend"
     ports:
       - "3306:3306"
     healthcheck:
