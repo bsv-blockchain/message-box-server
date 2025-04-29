@@ -9,7 +9,7 @@
  * Typical usage: Inbox or queue retrieval for real-time or deferred message delivery.
  */
 
-import { Request, Response } from 'express'
+import { Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
 import { AuthRequest } from '@bsv/auth-express-middleware'

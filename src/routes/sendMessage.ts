@@ -13,7 +13,7 @@
  *
  */
 
-import { Request, Response } from 'express'
+import { Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
 import { PublicKey } from '@bsv/sdk'
@@ -60,7 +60,7 @@ if (SERVER_PRIVATE_KEY == null || SERVER_PRIVATE_KEY.trim() === '') {
  * @function calculateMessagePrice
  * @description Determines the price (in satoshis) to send a message, optionally with priority.
  */
-export function calculateMessagePrice(message: string, priority: boolean = false): number {
+export function calculateMessagePrice (message: string, priority: boolean = false): number {
   const basePrice = 2 // Base fee in satoshis
   const sizeFactor = Math.ceil(Buffer.byteLength(message, 'utf8') / 1024) * 3 // Satoshis per KB
 
