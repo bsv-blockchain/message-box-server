@@ -18,3 +18,4 @@ local-data
 data
 coverage
 cars_artifact*
+coverage/*
