@@ -1,65 +1,97 @@
-name: Deployment
+# .github/workflows/deploy.yaml
+name: Deploy
 on:
   push:
-    branches:
-      - master
-      - production
+    branches: [ master, production ]
 
-env:
-  CURRENT_BRANCH: ${{ github.ref_name == 'production' && 'production' || 'master' }}
-  CWI_NPM_TOKEN: ${{ secrets.CWI_NPM_TOKEN }}
-  GCR_HOST: us.gcr.io
-  GOOGLE_PROJECT_ID: babbage-private
-  GCR_IMAGE_NAME: messagebox-server
+env:                          # ── static values
+  GCR_HOST:        us.gcr.io
+  GCP_PROJECT_ID:  babbage-private
+  IMAGE_NAME:      messagebox-server
 
 jobs:
-  build:
-    name: Deploy
+  build-and-deploy:
+    name: Build-&-Deploy to Cloud Run
     runs-on: ubuntu-latest
+
+    permissions:              # required by google-github-actions/auth
+      contents: read
+      id-token: write
+
+    env:                      # ── values that depend on the branch
+      CURRENT_BRANCH: ${{ github.ref_name == 'production' && 'production' || 'master' }}
+      CWI_NPM_TOKEN: ${{ secrets.CWI_NPM_TOKEN }}
+
     steps:
-      - name: Check out code
-        uses: actions/checkout@v2
+    # ──────── 1. Sources & toolchain ───────────────────────────────────────
+    - name: Checkout source
+      uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 22
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
 
-      - name: Install Dependencies
-        run: npm ci
+    - name: Install dependencies
+      run: npm ci
 
-      - name: Push Docker Image to GCR
-        uses: RafikFarhad/push-to-gcr-github-action@v4.1
-        with:
-          gcloud_service_key: ${{ secrets.DOCKER_REGISTRY_PUSH_KEY }}
-          registry: ${{ env.GCR_HOST }}
-          project_id: ${{ env.GOOGLE_PROJECT_ID }}
-          image_name: ${{ env.GCR_IMAGE_NAME }}
-          image_tag: latest,${{ env.CURRENT_BRANCH }}-${{ github.sha }}
+    # ──────── 2. Authenticate for docker push ─────────────────────────────
+    - name: Auth (push to Container Registry)
+      id: auth-push
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.DOCKER_REGISTRY_PUSH_KEY }}
 
-      - name: Create Service Description File
-        run: ./scripts/mkenv.sh service.${{ env.CURRENT_BRANCH }}.yaml
-        env:
-          IMAGE: "${{ env.GCR_HOST }}/${{ env.GOOGLE_PROJECT_ID }}/${{ env.GCR_IMAGE_NAME }}:${{ env.CURRENT_BRANCH }}-${{ github.sha }}"
-          SERVICE: ${{ env.CURRENT_BRANCH == 'production' && 'prod-messagebox-server' || 'staging-messagebox-server' }}
-          BSV_NETWORK: ${{ env.CURRENT_BRANCH == 'production' && 'mainnet' || 'testnet' }}
-          NODE_ENV: ${{ env.CURRENT_BRANCH =='production' && 'production' || 'staging' }}
-          WALLET_STORAGE_URL: ${{ env.CURRENT_BRANCH == 'production' && secrets.PROD_WALLET_STORAGE_URL || secrets.STAGING_WALLET_STORAGE_URL }}
-          SERVER_PRIVATE_KEY: ${{ env.CURRENT_BRANCH == 'production' && secrets.PROD_SERVER_PRIVATE_KEY || secrets.STAGING_SERVER_PRIVATE_KEY }}
-          KNEX_DB_CONNECTION: ${{ env.CURRENT_BRANCH == 'production' && secrets.PROD_KNEX_DB_CONNECTION || secrets.STAGING_KNEX_DB_CONNECTION }}
-          LOGGING_ENABLED: ${{ env.CURRENT_BRANCH == 'production' && secrets.PROD_LOGGING_ENABLED || secrets.STAGING_LOGGING_ENABLED }}
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v1
-        with:
-          credentials_json: ${{ secrets.gcp_deploy_creds }}
+    # ──────── 3. Build & push image ───────────────────────────────────────
+    - name: Build and push Docker image
+      id: build
+      env:
+        IMAGE_TAGS: |
+          latest
+          ${{ env.CURRENT_BRANCH }}-${{ github.sha }}
+      run: |
+        set -e
+        for TAG in $IMAGE_TAGS; do
+          IMAGE_URI=${{ env.GCR_HOST }}/${{ env.GCP_PROJECT_ID }}/${{ env.IMAGE_NAME }}:${TAG}
+          echo "Building $IMAGE_URI"
+          docker build -t "$IMAGE_URI" .
+          docker push  "$IMAGE_URI"
+        done
+        # expose the per-commit tag for later steps
+        echo "IMAGE_URI=${{ env.GCR_HOST }}/${{ env.GCP_PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ env.CURRENT_BRANCH }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy to Cloud Run
-        uses: google-github-actions/deploy-cloudrun@v1
-        with:
-          metadata: "service.${{ env.CURRENT_BRANCH }}.yaml"
-          region: us-west1
+    # ──────── 4. Generate service YAML (existing script) ──────────────────
+    - name: Create service description file
+      run: ./scripts/mkenv.sh service.${{ env.CURRENT_BRANCH }}.yaml
+      env:
+        IMAGE: "${{ steps.build.outputs.IMAGE_URI }}"
+        SERVICE: ${{ env.CURRENT_BRANCH == 'production' && 'prod-messagebox-server' || 'staging-messagebox-server' }}
+        BSV_NETWORK: ${{ env.CURRENT_BRANCH == 'production' && 'mainnet' || 'testnet' }}
+        NODE_ENV: ${{ env.CURRENT_BRANCH == 'production' && 'production' || 'staging' }}
+        WALLET_STORAGE_URL: ${{ env.CURRENT_BRANCH == 'production' && secrets.PROD_WALLET_STORAGE_URL || secrets.STAGING_WALLET_STORAGE_URL }}
+        SERVER_PRIVATE_KEY: ${{ env.CURRENT_BRANCH == 'production' && secrets.PROD_SERVER_PRIVATE_KEY || secrets.STAGING_SERVER_PRIVATE_KEY }}
+        KNEX_DB_CONNECTION: ${{ env.CURRENT_BRANCH == 'production' && secrets.PROD_KNEX_DB_CONNECTION || secrets.STAGING_KNEX_DB_CONNECTION }}
+        LOGGING_ENABLED: ${{ env.CURRENT_BRANCH == 'production' && secrets.PROD_LOGGING_ENABLED || secrets.STAGING_LOGGING_ENABLED }}
 
-      - name: Set Min Instances and Enable CPU Boost
-        run: |
-          gcloud run services update ${{ env.CURRENT_BRANCH == 'production' && 'prod-storage' || 'staging-storage' }} \
-            --min-instances=1 --cpu-boost --region=us-west1
+    # ──────── 5. Authenticate for deployment ──────────────────────────────
+    - name: Auth (deploy to Cloud Run)
+      id: auth-deploy
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GCP_DEPLOY_CREDS }}
+
+    # ──────── 6. Deploy to Cloud Run ───────────────────────────────────────
+    - name: Deploy to Cloud Run
+      uses: google-github-actions/deploy-cloudrun@v1
+      with:
+        metadata: service.${{ env.CURRENT_BRANCH }}.yaml
+        region:   us-west1
+
+    # ──────── 7. Post-deploy tweaks ───────────────────────────────────────
+    - name: Set min instances & enable CPU boost
+      run: |
+        SERVICE_NAME=$( [ "${{ env.CURRENT_BRANCH }}" = "production" ] && echo "prod-storage" || echo "staging-storage" )
+        gcloud run services update "${SERVICE_NAME}" \
+          --region=us-west1 \
+          --min-instances=1 \
+          --cpu-boost
