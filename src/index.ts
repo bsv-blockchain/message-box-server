@@ -330,10 +330,6 @@ export const start = async (): Promise<void> => {
 // Export for testing and CLI use
 export { io, http, HTTP_PORT, ROUTING_PREFIX }
 
-// Delay helper
-const delay = async (ms: number): Promise<void> =>
-  await new Promise(resolve => setTimeout(resolve, ms))
-
 // Only run server if not in test mode
 if (NODE_ENV !== 'test') {
   http.listen(HTTP_PORT, () => {
@@ -346,9 +342,8 @@ if (NODE_ENV !== 'test') {
       spawn('nginx', [], { stdio: ['inherit', 'inherit', 'inherit'] })
     }
 
-    // Delay before running DB migrations
+    // Run DB migrations immediately, no delay needed with container healthchecks
     ; (async () => {
-      await delay(8000)
       await knex.migrate.latest()
     })().catch((error) => {
       Logger.error('[STARTUP ERROR]', error)

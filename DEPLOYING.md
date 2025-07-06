@@ -111,7 +111,7 @@ ________________________________________
 ### Related Projects
 - [MessageBoxClient](https://github.com/bitcoin-sv/p2p)
 - [WalletClient](https://github.com/bitcoin-sv)
-- [Authrite](https://www.npmjs.com/package/@bsv/auth-express-middleware)
+- [Auth Middleware](https://www.npmjs.com/package/@bsv/auth-express-middleware)
 ________________________________________
 📄 License
 The MessageBox Server is licensed under the [Open BSV License](https://www.bsvlicense.org/).

@@ -19,7 +19,8 @@ services:
       NODE_ENV: development
       WALLET_STORAGE_URL: 'https://storage.babbage.systems'
     depends_on:
-      - backend-mysql
+      backend-mysql:
+        condition: service_healthy
 
   ## Backend database
   backend-mysql:
