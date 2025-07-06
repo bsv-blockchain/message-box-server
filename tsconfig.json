@@ -31,7 +31,7 @@
     "src"
   ],
   "exclude": [
-    "dist",
+    "out",
     "node_modules"
   ]
 }
