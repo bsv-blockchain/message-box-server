@@ -1,6 +1,6 @@
 {
   "name": "messagebox-server",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "main": "./out/src/index.js",
   "type": "module",
   "scripts": {
