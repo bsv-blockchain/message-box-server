@@ -56,7 +56,7 @@
   },
   "dependencies": {
     "@bsv/auth-express-middleware": "^1.2.1",
-    "@bsv/authsocket": "^1.0.5",
+    "@bsv/authsocket": "^1.0.6",
     "@bsv/payment-express-middleware": "^1.2.2",
     "@bsv/sdk": "^1.6.16",
     "@bsv/wallet-toolbox": "^1.5.12",
