@@ -19,7 +19,7 @@ import * as knexLib from 'knex'
 import { PubKeyHex, PublicKey } from '@bsv/sdk'
 import { Logger } from '../utils/logger.js'
 import { AuthRequest } from '@bsv/auth-express-middleware'
-import { sendFCMNotification } from '../utils/notifications.js'
+import { sendFCMNotification } from '../utils/sendFCMNotification.js'
 import { EncryptedNotificationPayload, NotificationPayment } from '../types/notifications.js'
 import { calculateMessageFees, shouldUseFCMDelivery } from '../utils/messagePermissions.js'
 
