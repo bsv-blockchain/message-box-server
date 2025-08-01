@@ -45,10 +45,7 @@ export async function sendFCMNotification(
       messageId: `fcm-${Date.now()}-${recipient.slice(0, 8)}`
     }
   } catch (error) {
-    Logger.error('[ERROR] Error sending FCM notification:', error)
-    return {
-      success: false,
-      error: String(error)
-    }
+    Logger.error('[FCM ERROR] Failed to send FCM notification:', error)
+    return { success: false, error: error.message }
   }
 }

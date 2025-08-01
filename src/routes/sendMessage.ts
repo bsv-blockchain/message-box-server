@@ -16,12 +16,13 @@
 import { Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
-import { PubKeyHex, PublicKey } from '@bsv/sdk'
+import { AtomicBEEF, AtomicBEEF, PubKeyHex, PublicKey } from '@bsv/sdk'
 import { Logger } from '../utils/logger.js'
 import { AuthRequest } from '@bsv/auth-express-middleware'
 import { sendFCMNotification } from '../utils/sendFCMNotification.js'
 import { EncryptedNotificationPayload, NotificationPayment } from '../types/notifications.js'
 import { calculateMessageFees, shouldUseFCMDelivery } from '../utils/messagePermissions.js'
+import { getWallet } from 'src/app.js'
 
 // Determine the environment (default to development)
 const { NODE_ENV = 'development', SERVER_PRIVATE_KEY } = process.env
@@ -54,6 +55,13 @@ export interface Message {
 export interface SendMessageRequest extends AuthRequest {
   body: {
     message?: Message
+    payment?: {
+      amount: number
+      deliveryFee: number
+      recipientFee: number
+      outputs: any[]
+      tx?: AtomicBEEF
+    }
   }
 }
 
@@ -182,6 +190,16 @@ export default {
     Logger.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
     Logger.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2))
 
+    if (req.auth?.identityKey == null) {
+      return res.status(401).json({
+        status: 'error',
+        code: 'ERR_AUTH_REQUIRED',
+        description: 'Authentication required'
+      })
+    }
+
+    const wallet = await getWallet()
+
     try {
       const { message } = req.body
       // Validate presence and structure of the message
@@ -258,10 +276,11 @@ export default {
       }
 
       try {
-        // Parse payment amount from the message if present
+        // Parse payment amount from the request if present
         let paymentAmount = 0
-        if (typeof message.body === 'object' && message.body.payment?.amount != null) {
-          paymentAmount = message.body.payment.amount
+        const payment = req.body.payment
+        if (payment?.amount != null) {
+          paymentAmount = payment.amount
         }
 
         Logger.log(`[DEBUG] Checking permissions for ${senderKey} -> ${message.recipient} (${message.messageBox})`)
@@ -274,7 +293,7 @@ export default {
           paymentAmount
         )
 
-        if (!feeResult.allowed) {
+        if (feeResult.allowed === false) {
           Logger.log(`[DEBUG] Message delivery blocked: ${feeResult.blocked_reason}`)
           return res.status(403).json({
             status: 'error',
@@ -290,7 +309,7 @@ export default {
         }
 
         // Handle payment validation and internalization BEFORE storing message
-        if (feeResult.requires_payment) {
+        if (feeResult.requires_payment === true) {
           Logger.log(`[DEBUG] Message requires payment: ${paymentAmount} >= ${feeResult.total_cost} required`)
 
           // Validate payment is provided and sufficient
@@ -309,10 +328,38 @@ export default {
             })
           }
 
-          // TODO: Internalize payment BEFORE storing message
-          Logger.log(`[TODO] Internalizing payment of ${paymentAmount} satoshis (delivery: ${feeResult.delivery_fee}, recipient: ${feeResult.recipient_fee})`)
-          // TODO: Call internalizeAction or appropriate payment processing
-          // TODO:  delivery_fee to server, recipient_fee to recipient
+          // Internalize payment BEFORE storing message
+          Logger.log(`[DEBUG] Internalizing payment of ${paymentAmount} satoshis (delivery: ${feeResult.delivery_fee}, recipient: ${feeResult.recipient_fee})`)
+          const internalizeResult = await wallet.internalizeAction({
+            tx: payment?.tx,
+            outputs: [{
+              outputIndex: 0,
+              protocol: 'wallet payment',
+              paymentRemittance: {
+                derivationPrefix: payment?.outputs[0].derivationPrefix,
+                derivationSuffix: payment?.outputs[0].derivationSuffix,
+                senderIdentityKey: req.auth?.identityKey
+              }
+            }, {
+              outputIndex: 1,
+              protocol: 'wallet payment',
+              paymentRemittance: {
+                derivationPrefix: payment?.outputs[1].derivationPrefix,
+                derivationSuffix: payment?.outputs[1].derivationSuffix,
+                senderIdentityKey: req.auth?.identityKey
+              }
+            }],
+            description: 'MessageBox delivery payment',
+            labels: ['messagebox', 'delivery-payment']
+          })
+
+          if (!internalizeResult.accepted) {
+            return res.status(400).json({
+              status: 'error',
+              code: 'ERR_INSUFFICIENT_PAYMENT',
+              description: 'Payment was not accepted! Contact the server host for more information.'
+            })
+          }
 
           Logger.log('[DEBUG] Payment validated and internalized successfully')
         } else {
@@ -361,7 +408,7 @@ export default {
 
       // Handle post-storage processing (FCM delivery)
       try {
-        if (shouldUseFCMDelivery(message.messageBox)) {
+        if (shouldUseFCMDelivery(message.messageBox) === true) {
           Logger.log('[DEBUG] Processing message for FCM delivery...')
 
           // Send the complete message through FCM (encrypted message + payment)
