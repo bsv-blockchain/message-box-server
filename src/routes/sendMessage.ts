@@ -16,7 +16,7 @@
 import { Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
-import { AtomicBEEF, AtomicBEEF, PubKeyHex, PublicKey } from '@bsv/sdk'
+import { PubKeyHex, PublicKey } from '@bsv/sdk'
 import { Logger } from '../utils/logger.js'
 import { AuthRequest } from '@bsv/auth-express-middleware'
 import { sendFCMNotification } from '../utils/sendFCMNotification.js'
@@ -59,8 +59,18 @@ export interface SendMessageRequest extends AuthRequest {
       amount: number
       deliveryFee: number
       recipientFee: number
-      outputs: any[]
-      tx?: AtomicBEEF
+      outputs: Array<{
+        outputIndex: number
+        protocol: 'wallet payment'
+        paymentRemittance: {
+          derivationPrefix: string
+          derivationSuffix: string
+          senderIdentityKey: string
+        }
+        satoshis: number
+        outputDescription: string
+      }>
+      tx?: number[]
     }
   }
 }
@@ -330,25 +340,17 @@ export default {
 
           // Internalize payment BEFORE storing message
           Logger.log(`[DEBUG] Internalizing payment of ${paymentAmount} satoshis (delivery: ${feeResult.delivery_fee}, recipient: ${feeResult.recipient_fee})`)
+          if (payment?.tx == null) {
+            return res.status(400).json({
+              status: 'error',
+              code: 'ERR_MISSING_PAYMENT_TX',
+              description: 'Payment transaction data is required'
+            })
+          }
+
           const internalizeResult = await wallet.internalizeAction({
-            tx: payment?.tx,
-            outputs: [{
-              outputIndex: 0,
-              protocol: 'wallet payment',
-              paymentRemittance: {
-                derivationPrefix: payment?.outputs[0].derivationPrefix,
-                derivationSuffix: payment?.outputs[0].derivationSuffix,
-                senderIdentityKey: req.auth?.identityKey
-              }
-            }, {
-              outputIndex: 1,
-              protocol: 'wallet payment',
-              paymentRemittance: {
-                derivationPrefix: payment?.outputs[1].derivationPrefix,
-                derivationSuffix: payment?.outputs[1].derivationSuffix,
-                senderIdentityKey: req.auth?.identityKey
-              }
-            }],
+            tx: payment.tx,
+            outputs: payment.outputs,
             description: 'MessageBox delivery payment',
             labels: ['messagebox', 'delivery-payment']
           })
