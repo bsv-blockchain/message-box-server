@@ -1,5 +1,4 @@
 import { Response } from 'express'
-import { PublicKey } from '@bsv/sdk'
 import { AuthRequest } from '@bsv/auth-express-middleware'
 import knexConfig from '../../../knexfile.js'
 import * as knexLib from 'knex'
@@ -23,9 +22,10 @@ const knex: knexLib.Knex = (knexLib as any).default?.(
 
 export interface ListPermissionsRequest extends AuthRequest {
   query: {
-    message_box?: string // Optional messageBox filter
+    messageBox?: string // Optional messageBox filter
     limit?: string // Optional pagination limit
     offset?: string // Optional pagination offset
+    createdAtOrder?: string // Optional sort order for created_at ('asc' | 'desc')
   }
 }
 
@@ -39,7 +39,7 @@ export interface ListPermissionsRequest extends AuthRequest {
  *       - Permissions
  *     parameters:
  *       - in: query
- *         name: message_box
+ *         name: messageBox
  *         required: false
  *         schema:
  *           type: string
@@ -61,6 +61,14 @@ export interface ListPermissionsRequest extends AuthRequest {
  *           minimum: 0
  *           default: 0
  *         description: Number of permissions to skip for pagination
+ *       - in: query
+ *         name: createdAtOrder
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: ['asc', 'desc']
+ *           default: 'desc'
+ *         description: Sort order for created_at date (asc=oldest first, desc=newest first)
  *     responses:
  *       200:
  *         description: Permissions retrieved successfully
@@ -81,10 +89,10 @@ export interface ListPermissionsRequest extends AuthRequest {
  *                         type: string
  *                         nullable: true
  *                         description: Sender identity key (null for box-wide defaults)
- *                       message_box:
+ *                       messageBox:
  *                         type: string
  *                         description: MessageBox type
- *                       recipient_fee:
+ *                       recipientFee:
  *                         type: integer
  *                         description: Fee setting (-1=always allow, 0=block all, >0=satoshi amount)
  *                       created_at:
@@ -96,9 +104,6 @@ export interface ListPermissionsRequest extends AuthRequest {
  *                 total_count:
  *                   type: integer
  *                   description: Total number of permissions (useful for pagination)
- *                 has_more:
- *                   type: boolean
- *                   description: Whether there are more results available
  *       400:
  *         description: Invalid query parameters
  *       401:
@@ -130,10 +135,11 @@ export default {
       }
 
       // Parse and validate query parameters
-      const { message_box, limit: limitStr, offset: offsetStr } = req.query
+      const { messageBox, limit: limitStr, offset: offsetStr, createdAtOrder } = req.query
 
       const limit = limitStr != null ? parseInt(limitStr, 10) : 100
       const offset = offsetStr != null ? parseInt(offsetStr, 10) : 0
+      const sortOrder = createdAtOrder === 'asc' ? 'asc' : 'desc' // Default to 'desc'
 
       // Validate pagination parameters
       if (isNaN(limit) || limit < 1 || limit > 1000) {
@@ -153,20 +159,9 @@ export default {
       }
 
       // Validate identity key format
-      let recipientKey: string
-      try {
-        const pubKey = PublicKey.fromString(req.auth.identityKey)
-        recipientKey = pubKey.toString()
-      } catch (error) {
-        Logger.error('[ERROR] Invalid identity key format:', error)
-        return res.status(400).json({
-          status: 'error',
-          code: 'ERR_INVALID_IDENTITY_KEY',
-          description: 'Invalid identity key format'
-        })
-      }
+      const recipientKey = req.auth.identityKey
 
-      Logger.log(`[DEBUG] Listing permissions for recipient: ${recipientKey}, messageBox: ${message_box ?? 'all'}, limit: ${limit}, offset: ${offset}`)
+      Logger.log(`[DEBUG] Listing permissions for recipient: ${recipientKey}, messageBox: ${messageBox ?? 'all'}, limit: ${limit}, offset: ${offset}, createdAtOrder: ${sortOrder}`)
 
       // Build base query
       let query = knex('message_permissions')
@@ -181,12 +176,12 @@ export default {
         .orderBy([
           { column: 'message_box', order: 'asc' },
           { column: 'sender', order: 'asc', nulls: 'first' }, // Box-wide (null) first
-          { column: 'created_at', order: 'desc' }
+          { column: 'created_at', order: sortOrder }
         ])
 
       // Apply messageBox filter if provided
-      if (message_box != null) {
-        query = query.where('message_box', message_box)
+      if (messageBox != null) {
+        query = query.where('message_box', messageBox)
       }
 
       // Get total count for pagination info (before applying limit/offset)
@@ -205,18 +200,12 @@ export default {
         status: 'success',
         permissions: permissions.map(p => ({
           sender: p.sender, // null for box-wide defaults
-          message_box: p.message_box,
-          recipient_fee: p.recipient_fee,
-          created_at: p.created_at,
-          updated_at: p.updated_at
+          messageBox: p.message_box,
+          recipientFee: p.recipient_fee,
+          createdAt: p.created_at,
+          updatedAt: p.updated_at
         })),
-        total_count: total,
-        has_more: offset + permissions.length < total,
-        pagination: {
-          limit,
-          offset,
-          returned_count: permissions.length
-        }
+        totalCount: total
       })
     } catch (error) {
       Logger.error('[ERROR] Error listing permissions:', error)

@@ -2,19 +2,22 @@ import { Response } from 'express'
 import { PublicKey } from '@bsv/sdk'
 import { Logger } from '../../utils/logger.js'
 import { AuthRequest } from '@bsv/auth-express-middleware'
-import { SetMessagePermissionRequest } from '../../types/messagePermissions.js'
 import { setMessagePermission } from '../../utils/messagePermissions.js'
 
 export interface SetPermissionRequestType extends AuthRequest {
-  body: SetMessagePermissionRequest
+  body: {
+    sender?: string // Optional - if not provided, sets box-wide default
+    messageBox: string
+    recipientFee: number
+  }
 }
 
 /**
  * @swagger
  * /permissions/set:
  *   post:
- *     summary: Set message permission for a sender/box combination
- *     description: Set permission level for receiving messages from a specific sender to a specific message box
+ *     summary: Set message permission for a sender/box combination or box-wide default
+ *     description: Set permission level for receiving messages. If sender is provided, sets permission for that specific sender. If sender is omitted, sets box-wide default for all senders.
  *     tags:
  *       - Permissions
  *     requestBody:
@@ -24,22 +27,21 @@ export interface SetPermissionRequestType extends AuthRequest {
  *           schema:
  *             type: object
  *             required:
- *               - sender
- *               - message_box
- *               - recipient_fee
+ *               - messageBox
+ *               - recipientFee
  *             properties:
  *               sender:
  *                 type: string
- *                 description: identityKey of the sender
- *               message_box:
+ *                 description: identityKey of the sender (optional - if omitted, sets box-wide default for all senders)
+ *               messageBox:
  *                 type: string
  *                 description: messageBox type (e.g., 'notifications', 'inbox')
- *               recipient_fee:
+ *               recipientFee:
  *                 type: integer
  *                 description: Fee level (-1=always allow, 0=blocked, >0=satoshi amount required)
  *     responses:
  *       200:
- *         description: Permission successfully updated
+ *         description: Permission successfully set/updated
  *       400:
  *         description: Invalid request data
  *       401:
@@ -55,7 +57,8 @@ export default {
       Logger.log('[DEBUG] Processing set message permission request')
 
       // Validate authentication
-      if (req.auth?.identityKey == null) {
+      const recipient = req.auth?.identityKey
+      if (recipient == null) {
         Logger.log('[DEBUG] Authentication required for set permission')
         return res.status(401).json({
           status: 'error',
@@ -64,54 +67,54 @@ export default {
         })
       }
 
-      const { sender, message_box, recipient_fee } = req.body
+      const { sender, messageBox, recipientFee } = req.body
 
-      // Validate request body
-      if (sender == null || message_box == null || typeof recipient_fee !== 'number') {
+      // Validate request body (sender is optional)
+      if (messageBox == null || typeof recipientFee !== 'number') {
         Logger.log('[DEBUG] Invalid request body for set permission')
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_REQUEST',
-          description: 'sender (identityKey), message_box (string), and recipient_fee (number) are required.'
+          description: 'messageBox (string) and recipientFee (number) are required. sender (string) is optional for box-wide settings.'
         })
       }
 
-      // Validate sender public key format
-      try {
-        PublicKey.fromString(sender)
-      } catch (error) {
-        Logger.log('[DEBUG] Invalid sender public key format')
-        return res.status(400).json({
-          status: 'error',
-          code: 'ERR_INVALID_PUBLIC_KEY',
-          description: 'Invalid sender public key format.'
-        })
+      // Validate sender public key format only if provided
+      if (sender != null) {
+        try {
+          PublicKey.fromString(sender)
+        } catch (error) {
+          Logger.log('[DEBUG] Invalid sender public key format')
+          return res.status(400).json({
+            status: 'error',
+            code: 'ERR_INVALID_PUBLIC_KEY',
+            description: 'Invalid sender public key format.'
+          })
+        }
       }
 
-      // Validate recipient_fee value
-      if (!Number.isInteger(recipient_fee)) {
-        Logger.log('[DEBUG] Invalid recipient_fee value - must be integer')
+      // Validate recipientFee value
+      if (!Number.isInteger(recipientFee)) {
+        Logger.log('[DEBUG] Invalid recipientFee value - must be integer')
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_FEE_VALUE',
-          description: 'recipient_fee must be an integer (-1, 0, or positive number).'
+          description: 'recipientFee must be an integer (-1, 0, or positive number).'
         })
       }
 
-      // Validate message_box value
-      if (typeof message_box !== 'string' || message_box.trim() === '') {
-        Logger.log('[DEBUG] Invalid message_box value')
+      // Validate messageBox value
+      if (typeof messageBox !== 'string' || messageBox.trim() === '') {
+        Logger.log('[DEBUG] Invalid messageBox value')
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_MESSAGE_BOX',
-          description: 'message_box must be a non-empty string.'
+          description: 'messageBox must be a non-empty string.'
         })
       }
 
-      const recipient = req.auth.identityKey
-
-      // Set the message permission
-      const success = await setMessagePermission(recipient, sender, message_box, recipient_fee)
+      // Set the message permission (convert undefined sender to null for box-wide)
+      const success = await setMessagePermission(recipient, sender ?? null, messageBox, recipientFee)
 
       if (success == null) {
         return res.status(500).json({
@@ -121,26 +124,24 @@ export default {
         })
       }
 
-      Logger.log(`[DEBUG] Successfully updated message permission: ${sender} -> ${recipient} (${message_box}), fee: ${recipient_fee}`)
+      const isBoxWide = sender == null
+      Logger.log(`[DEBUG] Successfully updated message permission: ${sender ?? 'BOX-WIDE'} -> ${recipient} (${messageBox}), fee: ${recipientFee}`)
 
       let description: string
-      if (recipient_fee === -1) {
-        description = `Messages from ${sender} to ${message_box} are now always allowed.`
-      } else if (recipient_fee === 0) {
-        description = `Messages from ${sender} to ${message_box} are now blocked.`
+      const senderText = isBoxWide ? 'all senders' : sender
+      const actionText = isBoxWide ? 'Box-wide default for' : 'Messages from'
+
+      if (recipientFee === -1) {
+        description = `${actionText} ${senderText} to ${messageBox} ${isBoxWide ? 'is' : 'are'} now blocked.`
+      } else if (recipientFee === 0) {
+        description = `${actionText} ${senderText} to ${messageBox} ${isBoxWide ? 'is' : 'are'} now always allowed.`
       } else {
-        description = `Messages from ${sender} to ${message_box} now require ${recipient_fee} satoshis.`
+        description = `${actionText} ${senderText} to ${messageBox} now require${isBoxWide ? 's' : ''} ${recipientFee} satoshis.`
       }
 
       return res.status(200).json({
         status: 'success',
-        description,
-        permission: {
-          sender,
-          message_box,
-          recipient_fee,
-          updated_at: new Date().toISOString()
-        }
+        description
       })
     } catch (error) {
       Logger.error('[ERROR] Internal Server Error in set permission:', error)

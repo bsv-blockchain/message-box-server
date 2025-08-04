@@ -64,7 +64,7 @@ export async function calculateMessageFees(
 
       return {
         delivery_fee: deliveryFee,
-        recipient_fee: 0, // Don't charge recipient fee when always allowed
+        recipient_fee: recipientFee, // Pass the value set to higher layers
         total_cost: totalCost,
         allowed,
         requires_payment: requiresPayment,
@@ -128,7 +128,7 @@ export async function getRecipientFee(
 ): Promise<number> {
   try {
     // First try sender-specific permission
-    if (sender) {
+    if (sender != null) {
       const senderSpecific = await knex('message_permissions')
         .where({
           recipient,
@@ -138,7 +138,7 @@ export async function getRecipientFee(
         .select('recipient_fee')
         .first()
 
-      if (senderSpecific) {
+      if (senderSpecific != null) {
         return senderSpecific.recipient_fee
       }
     }
@@ -153,7 +153,7 @@ export async function getRecipientFee(
       .select('recipient_fee')
       .first()
 
-    if (boxWideDefault) {
+    if (boxWideDefault != null) {
       return boxWideDefault.recipient_fee
     }
 
@@ -170,7 +170,6 @@ export async function getRecipientFee(
 
     Logger.log(`[DEBUG] Created box-wide default permission for ${recipient}/${messageBox} with fee ${defaultFee}`)
     return defaultFee
-
   } catch (error) {
     Logger.error('[ERROR] Error getting recipient fee:', error)
     return 0 // Block on error
@@ -185,9 +184,44 @@ function getSmartDefaultFee(messageBox: string): number {
   if (messageBox === 'notifications') {
     return 10 // 10 satoshis
   }
-  
+
   // Other message boxes are always allowed by default
   return -1
+}
+
+/**
+ * Set message permission for a sender/recipient/messageBox combination
+ */
+export async function setMessagePermission(
+  recipient: PubKeyHex,
+  sender: PubKeyHex | null,
+  messageBox: string,
+  recipientFee: number
+): Promise<boolean> {
+  try {
+    const now = new Date()
+
+    // Use upsert (insert or update)
+    await knex('message_permissions')
+      .insert({
+        recipient,
+        sender,
+        message_box: messageBox,
+        recipient_fee: recipientFee,
+        created_at: now,
+        updated_at: now
+      })
+      .onConflict(['recipient', 'sender', 'message_box'])
+      .merge({
+        recipient_fee: recipientFee,
+        updated_at: now
+      })
+
+    return true
+  } catch (error) {
+    Logger.error('[ERROR] Error setting message permission:', error)
+    return false
+  }
 }
 
 /**

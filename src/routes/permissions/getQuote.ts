@@ -2,13 +2,12 @@ import { Response } from 'express'
 import { PublicKey } from '@bsv/sdk'
 import { Logger } from '../../utils/logger.js'
 import { AuthRequest } from '@bsv/auth-express-middleware'
-import { calculateMessageFees } from '../../utils/messagePermissions.js'
-import { MessageQuoteResponse } from '../../types/messagePermissions.js'
+import { getRecipientFee, getServerDeliveryFee } from '../../utils/messagePermissions.js'
 
 export interface GetQuoteRequest extends AuthRequest {
   query: {
     recipient?: string // identityKey of recipient
-    message_box?: string // messageBox type
+    messageBox?: string // messageBox type
   }
 }
 
@@ -28,7 +27,7 @@ export interface GetQuoteRequest extends AuthRequest {
  *           type: string
  *         description: identityKey of the recipient
  *       - in: query
- *         name: message_box
+ *         name: messageBox
  *         required: true
  *         schema:
  *           type: string
@@ -60,15 +59,15 @@ export default {
         })
       }
 
-      const { recipient, message_box } = req.query
+      const { recipient, messageBox } = req.query
 
       // Validate required parameters
-      if (recipient == null || message_box == null) {
+      if (recipient == null || messageBox == null) {
         Logger.log('[DEBUG] Missing required parameters for message quote')
         return res.status(400).json({
           status: 'error',
           code: 'ERR_MISSING_PARAMETERS',
-          description: 'recipient and message_box parameters are required.'
+          description: 'recipient and messageBox parameters are required.'
         })
       }
 
@@ -84,50 +83,17 @@ export default {
         })
       }
 
-      const senderKey = req.auth.identityKey
-
       // Calculate fees for this sender/recipient/box combination
-      const feeResult = await calculateMessageFees(recipient, senderKey, message_box, 0)
-
-      Logger.log(`[DEBUG] Fee calculation for ${senderKey} -> ${recipient} (${message_box}): ${JSON.stringify(feeResult)}`)
-
-      let permissionStatus: 'allowed' | 'blocked' | 'payment_required' | 'no_permission'
-      let description: string
-
-      if (!feeResult.allowed && feeResult.blocked_reason != null) {
-        if (feeResult.recipient_fee === 0) {
-          permissionStatus = 'blocked'
-          description = `Messages to ${recipient}'s ${message_box} are blocked.`
-        } else {
-          permissionStatus = 'payment_required'
-          description = `Messages to ${recipient}'s ${message_box} require payment of ${feeResult.total_cost} satoshis.`
-        }
-      } else if (feeResult.requires_payment) {
-        permissionStatus = 'payment_required'
-        description = `Messages to ${recipient}'s ${message_box} require payment of ${feeResult.total_cost} satoshis.`
-      } else {
-        permissionStatus = 'allowed'
-        description = `Messages to ${recipient}'s ${message_box} are allowed (${feeResult.total_cost === 0 ? 'free' : feeResult.total_cost + ' satoshis'}).`
-      }
-
-      const quote: MessageQuoteResponse = {
-        sender: senderKey,
-        recipient,
-        message_box,
-        delivery_allowed: feeResult.allowed,
-        delivery_fee: feeResult.delivery_fee,
-        recipient_fee: feeResult.recipient_fee,
-        total_cost: feeResult.total_cost,
-        permission_status: permissionStatus,
-        description,
-        currency: 'satoshis',
-        valid_until: new Date(Date.now() + 300000).toISOString() // Valid for 5 minutes
-      }
+      const deliveryFee = await getServerDeliveryFee(messageBox)
+      const recipientFee = await getRecipientFee(recipient, req.auth.identityKey, messageBox)
 
       return res.status(200).json({
         status: 'success',
         description: 'Message delivery quote generated.',
-        quote
+        quote: {
+          deliveryFee: deliveryFee,
+          recipientFee: recipientFee
+        }
       })
     } catch (error) {
       Logger.error('[ERROR] Internal Server Error in message quote:', error)

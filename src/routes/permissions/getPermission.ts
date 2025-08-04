@@ -2,12 +2,29 @@ import { Response } from 'express'
 import { PublicKey } from '@bsv/sdk'
 import { Logger } from '../../utils/logger.js'
 import { AuthRequest } from '@bsv/auth-express-middleware'
-import { getMessagePermission } from '../../utils/messagePermissions.js'
+import knexConfig from '../../../knexfile.js'
+import * as knexLib from 'knex'
+
+// Determine the environment (default to development)
+const { NODE_ENV = 'development' } = process.env
+
+/**
+ * Knex instance connected based on environment (development, production, or staging).
+ */
+const knex: knexLib.Knex = (knexLib as any).default?.(
+  NODE_ENV === 'production' || NODE_ENV === 'staging'
+    ? knexConfig.production
+    : knexConfig.development
+) ?? (knexLib as any)(
+  NODE_ENV === 'production' || NODE_ENV === 'staging'
+    ? knexConfig.production
+    : knexConfig.development
+)
 
 export interface GetPermissionRequest extends AuthRequest {
   query: {
     sender?: string // identityKey of sender to check
-    message_box?: string // messageBox type to check
+    messageBox?: string // messageBox type to check
   }
 }
 
@@ -27,7 +44,7 @@ export interface GetPermissionRequest extends AuthRequest {
  *           type: string
  *         description: identityKey of the sender to check
  *       - in: query
- *         name: message_box
+ *         name: messageBox
  *         required: true
  *         schema:
  *           type: string
@@ -59,15 +76,15 @@ export default {
         })
       }
 
-      const { sender, message_box } = req.query
+      const { sender, messageBox } = req.query
 
       // Validate required parameters
-      if (sender == null || message_box == null) {
+      if (sender == null || messageBox == null) {
         Logger.log('[DEBUG] Missing required parameters for get permission')
         return res.status(400).json({
           status: 'error',
           code: 'ERR_MISSING_PARAMETERS',
-          description: 'sender and message_box parameters are required.'
+          description: 'sender and messageBox parameters are required.'
         })
       }
 
@@ -85,29 +102,36 @@ export default {
 
       const recipient = req.auth.identityKey
 
-      // Get message permission
-      const permission = await getMessagePermission(recipient, sender, message_box)
+      // Get message permission directly from database
+      const permission = await knex('message_permissions')
+        .where({
+          recipient,
+          sender,
+          message_box: messageBox
+        })
+        .select('recipient_fee', 'created_at', 'updated_at')
+        .first()
 
-      Logger.log(`[DEBUG] Permission record for ${sender} -> ${recipient} (${message_box}): ${JSON.stringify(permission)}`)
+      Logger.log(`[DEBUG] Permission record for ${sender} -> ${recipient} (${messageBox}): ${JSON.stringify(permission)}`)
 
       if (permission != null) {
         // Permission is set, return it
         return res.status(200).json({
           status: 'success',
-          description: `Permission setting found for sender ${sender} to ${message_box}.`,
+          description: `Permission setting found for sender ${sender} to ${messageBox}.`,
           permission: {
-            sender,
-            message_box,
-            recipient_fee: permission.recipient_fee,
-            created_at: permission.created_at.toISOString(),
-            updated_at: permission.updated_at.toISOString()
+            sender, // Required?
+            messageBox,
+            recipientFee: permission.recipient_fee,
+            createdAt: permission.created_at.toISOString(),
+            updatedAt: permission.updated_at.toISOString()
           }
         })
       } else {
         // No permission set, return undefined
         return res.status(200).json({
           status: 'success',
-          description: `No permission setting found for sender ${sender} to ${message_box}.`,
+          description: `No permission setting found for sender ${sender} to ${messageBox}.`,
           permission: undefined
         })
       }
