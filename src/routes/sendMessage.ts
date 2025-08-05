@@ -16,13 +16,14 @@
 import { Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
-import { PubKeyHex, PublicKey } from '@bsv/sdk'
+import { AtomicBEEF, Base64String, BasketStringUnder300Bytes, BooleanDefaultTrue, DescriptionString5to50Bytes, Hash, LabelStringUnder300Bytes, OutputTagStringUnder300Bytes, P2PKH, PositiveIntegerOrZero, PrivateKey, PubKeyHex, PublicKey, Utils } from '@bsv/sdk'
 import { Logger } from '../utils/logger.js'
 import { AuthRequest } from '@bsv/auth-express-middleware'
 import { sendFCMNotification } from '../utils/sendFCMNotification.js'
 import { EncryptedNotificationPayload, NotificationPayment } from '../types/notifications.js'
-import { calculateMessageFees, shouldUseFCMDelivery } from '../utils/messagePermissions.js'
-import { getWallet } from 'src/app.js'
+import { calculateMessageFees, getRecipientFee, getServerDeliveryFee, shouldUseFCMDelivery } from '../utils/messagePermissions.js'
+// import { validatePayment } from '../utils/validatePayment.js'
+import { getWallet } from '../app.js'
 
 // Determine the environment (default to development)
 const { NODE_ENV = 'development', SERVER_PRIVATE_KEY } = process.env
@@ -45,33 +46,35 @@ export interface Message {
   recipient: PubKeyHex
   messageBox: string
   messageId: string
-  body: string | {
-    encrypted_payload?: EncryptedNotificationPayload
-    payment?: NotificationPayment
-  }
+  body: string
+}
+
+export interface Payment {
+  tx: AtomicBEEF
+  outputs: Array<{
+    outputIndex: PositiveIntegerOrZero
+    protocol: 'wallet payment' | 'basket insertion'
+    paymentRemittance?: {
+      derivationPrefix: Base64String
+      derivationSuffix: Base64String
+      senderIdentityKey: PubKeyHex
+    }
+    insertionRemittance?: {
+      basket: BasketStringUnder300Bytes
+      customInstructions?: string
+      tags?: OutputTagStringUnder300Bytes[]
+    } // No output description?
+  }>
+  description: DescriptionString5to50Bytes
+  labels?: LabelStringUnder300Bytes[]
+  seekPermission?: BooleanDefaultTrue
 }
 
 // Extended Express request type with authentication
 export interface SendMessageRequest extends AuthRequest {
   body: {
     message?: Message
-    payment?: {
-      amount: number
-      deliveryFee: number
-      recipientFee: number
-      outputs: Array<{
-        outputIndex: number
-        protocol: 'wallet payment'
-        paymentRemittance: {
-          derivationPrefix: string
-          derivationSuffix: string
-          senderIdentityKey: string
-        }
-        satoshis: number
-        outputDescription: string
-      }>
-      tx?: number[]
-    }
+    payment?: Payment
   }
 }
 
@@ -200,15 +203,14 @@ export default {
     Logger.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
     Logger.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2))
 
-    if (req.auth?.identityKey == null) {
+    const senderKey = req.auth?.identityKey
+    if (senderKey == null) {
       return res.status(401).json({
         status: 'error',
         code: 'ERR_AUTH_REQUIRED',
         description: 'Authentication required'
       })
     }
-
-    const wallet = await getWallet()
 
     try {
       const { message } = req.body
@@ -280,46 +282,69 @@ export default {
         .select('messageBoxId')
         .first()
 
-      const senderKey = req.auth?.identityKey
-      if (senderKey == null) {
-        return res.status(401).json({ status: 'error', code: 'ERR_UNAUTHORIZED', description: 'Unauthorized' })
-      }
-
+      // Parse payment amount from the request if present
+      let paymentAmount = 0
+      const payment = req.body.payment
       try {
-        // Parse payment amount from the request if present
-        let paymentAmount = 0
-        const payment = req.body.payment
-        if (payment?.amount != null) {
-          paymentAmount = payment.amount
+        if (payment?.outputs != null) {
+          paymentAmount = payment.outputs.reduce((acc, output) => acc + output.amount, 0)
         }
 
         Logger.log(`[DEBUG] Checking permissions for ${senderKey} -> ${message.recipient} (${message.messageBox})`)
 
         // Calculate fees and check permissions (this will auto-create box-wide defaults)
-        const feeResult = await calculateMessageFees(
-          message.recipient,
-          senderKey,
-          message.messageBox,
-          paymentAmount
-        )
+        const deliveryFee = await getServerDeliveryFee(messageBox)
+        const recipientFee = await getRecipientFee(message.recipient, senderKey, messageBox)
 
-        if (feeResult.allowed === false) {
+        // Determine if this is allowed based on fees and payment provided
+        // Recipient fee standard: -1 = block all, 0 = always allow, >0 = payment required
+        let allowed = true
+        let requiresPayment = false
+        let blockedReason: string | undefined
+        let totalRequired = deliveryFee // Start with delivery fee
+
+        if (recipientFee === -1) {
+          // Block all messages
+          allowed = false
+          blockedReason = `Messages to ${message.recipient} are blocked`
+        } else if (recipientFee === 0) {
+          // Always allow, no recipient fee required
+          allowed = true
+          requiresPayment = deliveryFee > 0 // Only delivery fee if any
+        } else if (recipientFee > 0) {
+          // Payment required (recipient fee + delivery fee)
+          allowed = true
+          requiresPayment = true
+          totalRequired = deliveryFee + recipientFee
+        }
+
+        // Create fee result object for downstream logic
+        const feeResult = {
+          allowed,
+          requires_payment: requiresPayment,
+          blocked_reason: blockedReason,
+          delivery_fee: deliveryFee,
+          recipient_fee: recipientFee,
+          total_cost: totalRequired
+        }
+
+        if (!feeResult.allowed) {
           Logger.log(`[DEBUG] Message delivery blocked: ${feeResult.blocked_reason}`)
           return res.status(403).json({
             status: 'error',
             code: 'ERR_DELIVERY_BLOCKED',
             description: feeResult.blocked_reason ?? 'Message delivery not allowed',
-            fee_info: {
-              delivery_fee: feeResult.delivery_fee,
-              recipient_fee: feeResult.recipient_fee,
-              total_required: feeResult.total_cost,
-              payment_provided: paymentAmount
+            feeInfo: {
+              deliveryFee: feeResult.delivery_fee,
+              recipientFee: feeResult.recipient_fee,
+              totalRequired: feeResult.total_cost,
+              paymentProvided: paymentAmount
             }
           })
         }
 
         // Handle payment validation and internalization BEFORE storing message
-        if (feeResult.requires_payment === true) {
+        if (feeResult.requires_payment) {
           Logger.log(`[DEBUG] Message requires payment: ${paymentAmount} >= ${feeResult.total_cost} required`)
 
           // Validate payment is provided and sufficient
@@ -329,11 +354,11 @@ export default {
               status: 'error',
               code: 'ERR_INSUFFICIENT_PAYMENT',
               description: `Payment required: ${feeResult.total_cost} satoshis, but only ${paymentAmount} provided`,
-              fee_info: {
-                delivery_fee: feeResult.delivery_fee,
-                recipient_fee: feeResult.recipient_fee,
-                total_required: feeResult.total_cost,
-                payment_provided: paymentAmount
+              feeInfo: {
+                deliveryFee: feeResult.delivery_fee,
+                recipientFee: feeResult.recipient_fee,
+                totalRequired: feeResult.total_cost,
+                paymentProvided: paymentAmount
               }
             })
           }
@@ -348,22 +373,107 @@ export default {
             })
           }
 
-          const internalizeResult = await wallet.internalizeAction({
-            tx: payment.tx,
-            outputs: payment.outputs,
-            description: 'MessageBox delivery payment',
-            labels: ['messagebox', 'delivery-payment']
-          })
+          // Validate payment contains required outputs
+          // const tx = Transaction.fromBEEF(payment.tx)
+          // const serverPublicKey = (await wallet.getPublicKey({ identityKey: true })).publicKey
 
-          if (!internalizeResult.accepted) {
-            return res.status(400).json({
-              status: 'error',
-              code: 'ERR_INSUFFICIENT_PAYMENT',
-              description: 'Payment was not accepted! Contact the server host for more information.'
-            })
+          // Validate delivery fee payment (server receives this)
+          const outputsToInternalize = []
+          if (feeResult.delivery_fee > 0) {
+            // const deliveryFeeOutput = payment.outputs.find(output =>
+            //   output.outputDescription === 'MessageBox server delivery fee'
+            // )
+            outputsToInternalize.push(payment.outputs[0])
+            // if (deliveryFeeOutput == null) {
+            //   return res.status(400).json({
+            //     status: 'error',
+            //     code: 'ERR_MISSING_DELIVERY_FEE',
+            //     description: 'Missing delivery fee payment output'
+            //   })
+            // }
+
+            // TODO: Implement delivery fee validation
+            // const deliveryValidation = validatePayment({
+            //   transaction: tx,
+            //   derivationPrefix: deliveryFeeOutput.paymentRemittance.derivationPrefix,
+            //   derivationSuffix: deliveryFeeOutput.paymentRemittance.derivationSuffix,
+            //   senderPrivateKey: '0000000000000000000000000000000000000000000000000000000000000001', // Anyone key
+            //   recipientPublicKey: serverPublicKey,
+            //   expectedAmount: feeResult.delivery_fee
+            // })
+
+            // if (!deliveryValidation.valid) {
+            //   return res.status(400).json({
+            //     status: 'error',
+            //     code: 'ERR_INVALID_DELIVERY_PAYMENT',
+            //     description: `Invalid delivery fee payment: ${deliveryValidation.error}`
+            //   })
+            // }
           }
 
-          Logger.log('[DEBUG] Payment validated and internalized successfully')
+          // Validate recipient fee payment (recipient receives this)
+          if (feeResult.recipient_fee > 0) {
+            // const recipientFeeOutput = payment.outputs.find(output =>
+            //   output.outputDescription === 'MessageBox recipient fee'
+            // )
+
+            // if (recipientFeeOutput == null) {
+            //   return res.status(400).json({
+            //     status: 'error',
+            //     code: 'ERR_MISSING_RECIPIENT_FEE',
+            //     description: 'Missing recipient fee payment output'
+            //   })
+            // }
+
+            // TODO: Implement recipient fee validation
+            // const recipientValidation = validatePayment({
+            //   transaction: tx,
+            //   derivationPrefix: recipientFeeOutput.paymentRemittance.derivationPrefix,
+            //   derivationSuffix: recipientFeeOutput.paymentRemittance.derivationSuffix,
+            //   senderPrivateKey: '0000000000000000000000000000000000000000000000000000000000000001', // Anyone key
+            //   recipientPublicKey: message.recipient,
+            //   expectedAmount: feeResult.recipient_fee
+            // })
+
+            // if (!recipientValidation.valid) {
+            //   return res.status(400).json({
+            //     status: 'error',
+            //     code: 'ERR_INVALID_RECIPIENT_PAYMENT',
+            //     description: `Invalid recipient fee payment: ${recipientValidation.error}`
+            //   })
+            // }
+          }
+
+          console.log('Internalizing payment...')
+          console.log('Payment tx:', payment.tx)
+          console.log('Payment outputs:', JSON.stringify(payment.outputs, null, 2))
+          try {
+            const wallet = await getWallet()
+            const internalizeResult = await wallet.internalizeAction({
+              tx: payment.tx,
+              outputs: outputsToInternalize,
+              description: payment.description ?? 'MessageBox delivery payment'
+            })
+
+            console.log('Internalize result:', internalizeResult)
+
+            if (!internalizeResult.accepted) {
+              return res.status(400).json({
+                status: 'error',
+                code: 'ERR_INSUFFICIENT_PAYMENT',
+                description: 'Payment was not accepted! Contact the server host for more information.'
+              })
+            }
+
+            Logger.log('[DEBUG] Payment validated and internalized successfully')
+          } catch (error) {
+            Logger.error('[ERROR] Failed to internalize payment:', error)
+            return res.status(500).json({
+              status: 'error',
+              code: 'ERR_INTERNALIZE_FAILED',
+              description: `Failed to internalize payment: ${error instanceof Error ? error.message : 'Unknown error'}`
+            })
+          }
         } else {
           Logger.log('[DEBUG] Message delivery is free - no payment required')
         }
@@ -410,39 +520,25 @@ export default {
 
       // Handle post-storage processing (FCM delivery)
       try {
-        if (shouldUseFCMDelivery(message.messageBox) === true) {
+        if (shouldUseFCMDelivery(message.messageBox)) {
           Logger.log('[DEBUG] Processing message for FCM delivery...')
 
-          // Send the complete message through FCM (encrypted message + payment)
+          // Send optimized FCM payload (only essential data for decryption)
           const fcmPayload = {
             title: 'New Message',
-            body: 'You have received an encrypted message',
-
-            // Include the complete original message data
-            data: {
-              // Send the entire request body so recipient gets encrypted message + payment
-              message: JSON.stringify(req.body),
-              messageId: message.messageId,
-              messageBox: message.messageBox,
-              timestamp: Date.now().toString(),
-
-              // Payment information if present
-              ...(typeof message.body === 'object' && message.body.payment != null && {
-                hasPayment: 'true',
-                paymentAmount: message.body.payment.amount?.toString() ?? '0'
-              })
-            }
+            messageId: message.messageId
           }
 
           Logger.log(`[DEBUG] Sending FCM with complete message data for ${message.messageId}`)
+          Logger.log('FCM Payload:', JSON.stringify(fcmPayload, null, 2))
 
           // Send FCM notification with complete message
           const notificationResult = await sendFCMNotification(message.recipient, fcmPayload)
 
           if (notificationResult.success) {
-            Logger.log(`[DEBUG] FCM notification sent successfully: ${notificationResult.messageId}`)
+            Logger.log('[DEBUG] FCM notification sent successfully')
           } else {
-            Logger.log(`[DEBUG] FCM notification failed: ${notificationResult.error || 'Unknown error'}`)
+            Logger.log(`[DEBUG] FCM notification failed: ${notificationResult.error ?? 'Unknown error'}`)
           }
         }
       } catch (deliveryError) {
