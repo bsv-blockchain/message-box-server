@@ -33,6 +33,7 @@
     "@types/supertest": "^6.0.2",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
+    "@types/web-push": "^3.6.4",
     "@typescript-eslint/eslint-plugin": "^8.24.0",
     "@typescript-eslint/parser": "^8.24.0",
     "axios": "^1.8.4",
@@ -65,9 +66,11 @@
     "body-parser": "^1.20.3",
     "dotenv": "^8.6.0",
     "express": "^4.21.2",
+    "firebase-admin": "^13.4.0",
     "knex": "^2.5.1",
     "mongodb": "^6.15.0",
     "mysql2": "^3.12.0",
-    "prettyjson": "^1.2.5"
+    "prettyjson": "^1.2.5",
+    "web-push": "^3.6.7"
   }
 }

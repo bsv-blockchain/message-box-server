@@ -19,3 +19,4 @@ data
 coverage
 cars_artifact*
 coverage/*
+service-account-key.json

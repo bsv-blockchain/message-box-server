@@ -1,13 +1,31 @@
+import { getMessaging } from 'src/config/firebase.js'
 import { Logger } from './logger.js'
 import { PubKeyHex } from '@bsv/sdk'
+import knexConfig from '../../knexfile.js'
+import * as knexLib from 'knex'
+
+// Determine the environment (default to development)
+const { NODE_ENV = 'development' } = process.env
+
+/**
+ * Knex instance connected based on environment (development, production, or staging).
+ */
+const knex: knexLib.Knex = (knexLib as any).default?.(
+  NODE_ENV === 'production' || NODE_ENV === 'staging'
+    ? knexConfig.production
+    : knexConfig.development
+) ?? (knexLib as any)(
+  NODE_ENV === 'production' || NODE_ENV === 'staging'
+    ? knexConfig.production
+    : knexConfig.development
+)
 
 /**
  * FCM Payload interface
  */
 export interface FCMPayload {
   title: string
-  body: string
-  data?: Record<string, any>
+  messageId: string
 }
 
 /**
@@ -15,14 +33,12 @@ export interface FCMPayload {
  */
 export interface SendNotificationResult {
   success: boolean
-  messageId?: string
   error?: string
 }
 
 /**
- * Send FCM push notification
- * TODO: Integrate with Firebase Admin SDK and Jackie's FCM code
- * For now, this is a placeholder that logs the notification attempt
+ * Send FCM push notification to all registered devices for a recipient
+ * Looks up FCM tokens from device_registrations table and sends to all active devices
  */
 export async function sendFCMNotification(
   recipient: PubKeyHex,
@@ -32,20 +48,78 @@ export async function sendFCMNotification(
     Logger.log(`[DEBUG] Attempting to send FCM notification to ${recipient}`)
     Logger.log('[DEBUG] Payload:', payload)
 
-    // TODO: Integrate with Jackie's FCM code
-    // 1. Look up FCM token for recipient from Firebase/database
-    // 2. Use Firebase Admin SDK to send notification
-    // 3. Handle different platforms (iOS/Android/Web Push)
+    // Look up all active FCM tokens for this recipient
+    const deviceRegistrations = await knex('device_registrations')
+      .where({
+        identity_key: recipient,
+        active: true
+      })
+      .select('fcm_token', 'platform', 'device_id')
 
-    // For now, just log and return success
-    Logger.log(`[NOTIFICATION] Would send FCM notification to ${recipient}: ${payload.title} - ${payload.body}`)
+    if (deviceRegistrations.length === 0) {
+      Logger.log(`[DEBUG] No active FCM tokens found for recipient ${recipient}`)
+      return { success: false, error: 'No registered devices found for recipient' }
+    }
 
-    return {
-      success: true,
-      messageId: `fcm-${Date.now()}-${recipient.slice(0, 8)}`
+    Logger.log(`[DEBUG] Found ${deviceRegistrations.length} active device(s) for ${recipient}`)
+
+    // Send notification to all registered devices
+    const sendPromises = deviceRegistrations.map(async (device) => {
+      try {
+        Logger.log(`[DEBUG] Sending to ${device.platform ?? 'unknown'} device: ${device.device_id ?? 'unknown'}`)
+
+        await getMessaging().send({
+          token: device.fcm_token,
+          notification: {
+            title: payload.title,
+            body: payload.messageId
+          }
+        })
+
+        // Update last_used timestamp on successful send
+        await knex('device_registrations')
+          .where('fcm_token', device.fcm_token)
+          .update({
+            last_used: new Date(),
+            updated_at: new Date()
+          })
+
+        return { success: true, token: device.fcm_token }
+      } catch (error) {
+        Logger.error(`[FCM ERROR] Failed to send to token ${device.fcm_token.slice(-10)}:`, error)
+
+        // Mark token as inactive if it's invalid
+        if (error instanceof Error && (
+          error.message.includes('registration-token-not-registered') ||
+          error.message.includes('invalid-registration-token')
+        )) {
+          Logger.log(`[DEBUG] Marking invalid token as inactive: ...${device.fcm_token.slice(-10)}`)
+          await knex('device_registrations')
+            .where('fcm_token', device.fcm_token)
+            .update({
+              active: false,
+              updated_at: new Date()
+            })
+        }
+
+        return { success: false, token: device.fcm_token, error: error instanceof Error ? error.message : String(error) }
+      }
+    })
+
+    const results = await Promise.all(sendPromises)
+    const successCount = results.filter(r => r.success).length
+    const failureCount = results.length - successCount
+
+    Logger.log(`[DEBUG] FCM notification results: ${successCount} successful, ${failureCount} failed`)
+
+    // Consider it successful if at least one device received the notification
+    if (successCount > 0) {
+      return { success: true }
+    } else {
+      return { success: false, error: `Failed to send to all ${results.length} registered devices` }
     }
   } catch (error) {
     Logger.error('[FCM ERROR] Failed to send FCM notification:', error)
-    return { success: false, error: error.message }
+    return { success: false, error: error instanceof Error ? error.message : String(error) }
   }
 }
