@@ -20,9 +20,7 @@ import { AtomicBEEF, Base64String, BasketStringUnder300Bytes, BooleanDefaultTrue
 import { Logger } from '../utils/logger.js'
 import { AuthRequest } from '@bsv/auth-express-middleware'
 import { sendFCMNotification } from '../utils/sendFCMNotification.js'
-import { EncryptedNotificationPayload, NotificationPayment } from '../types/notifications.js'
-import { calculateMessageFees, getRecipientFee, getServerDeliveryFee, shouldUseFCMDelivery } from '../utils/messagePermissions.js'
-// import { validatePayment } from '../utils/validatePayment.js'
+import { getRecipientFee, getServerDeliveryFee, shouldUseFCMDelivery } from '../utils/messagePermissions.js'
 import { getWallet } from '../app.js'
 
 // Determine the environment (default to development)
@@ -283,12 +281,11 @@ export default {
         .first()
 
       // Parse payment amount from the request if present
-      let paymentAmount = 0
       const payment = req.body.payment
       try {
-        if (payment?.outputs != null) {
-          paymentAmount = payment.outputs.reduce((acc, output) => acc + output.amount, 0)
-        }
+        // if (payment?.outputs != null) {
+        //   paymentAmount = payment.outputs.reduce((acc, output) => acc + output.amount, 0)
+        // }
 
         Logger.log(`[DEBUG] Checking permissions for ${senderKey} -> ${message.recipient} (${message.messageBox})`)
 
@@ -337,34 +334,33 @@ export default {
             feeInfo: {
               deliveryFee: feeResult.delivery_fee,
               recipientFee: feeResult.recipient_fee,
-              totalRequired: feeResult.total_cost,
-              paymentProvided: paymentAmount
+              totalRequired: feeResult.total_cost
             }
           })
         }
 
         // Handle payment validation and internalization BEFORE storing message
         if (feeResult.requires_payment) {
-          Logger.log(`[DEBUG] Message requires payment: ${paymentAmount} >= ${feeResult.total_cost} required`)
+          // Logger.log(`[DEBUG] Message requires payment: ${paymentAmount} >= ${feeResult.total_cost} required`)
 
           // Validate payment is provided and sufficient
-          if (paymentAmount < feeResult.total_cost) {
-            Logger.log(`[DEBUG] Insufficient payment: ${paymentAmount} < ${feeResult.total_cost} required`)
-            return res.status(402).json({
-              status: 'error',
-              code: 'ERR_INSUFFICIENT_PAYMENT',
-              description: `Payment required: ${feeResult.total_cost} satoshis, but only ${paymentAmount} provided`,
-              feeInfo: {
-                deliveryFee: feeResult.delivery_fee,
-                recipientFee: feeResult.recipient_fee,
-                totalRequired: feeResult.total_cost,
-                paymentProvided: paymentAmount
-              }
-            })
-          }
+          // if (paymentAmount < feeResult.total_cost) {
+          //   Logger.log(`[DEBUG] Insufficient payment: ${paymentAmount} < ${feeResult.total_cost} required`)
+          //   return res.status(402).json({
+          //     status: 'error',
+          //     code: 'ERR_INSUFFICIENT_PAYMENT',
+          //     description: `Payment required: ${feeResult.total_cost} satoshis, but only ${paymentAmount} provided`,
+          //     feeInfo: {
+          //       deliveryFee: feeResult.delivery_fee,
+          //       recipientFee: feeResult.recipient_fee,
+          //       totalRequired: feeResult.total_cost,
+          //       paymentProvided: paymentAmount
+          //     }
+          //   })
+          // }
 
           // Internalize payment BEFORE storing message
-          Logger.log(`[DEBUG] Internalizing payment of ${paymentAmount} satoshis (delivery: ${feeResult.delivery_fee}, recipient: ${feeResult.recipient_fee})`)
+          Logger.log(`[DEBUG] Internalizing payment of ${feeResult.total_cost} satoshis (delivery: ${feeResult.delivery_fee}, recipient: ${feeResult.recipient_fee})`)
           if (payment?.tx == null) {
             return res.status(400).json({
               status: 'error',

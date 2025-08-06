@@ -91,8 +91,8 @@ export default {
         status: 'success',
         description: 'Message delivery quote generated.',
         quote: {
-          deliveryFee: deliveryFee,
-          recipientFee: recipientFee
+          deliveryFee,
+          recipientFee
         }
       })
     } catch (error) {

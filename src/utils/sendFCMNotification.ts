@@ -1,4 +1,4 @@
-import { getMessaging } from 'src/config/firebase.js'
+import { getFirebaseMessaging } from '../config/firebase.js'
 import { Logger } from './logger.js'
 import { PubKeyHex } from '@bsv/sdk'
 import knexConfig from '../../knexfile.js'
@@ -68,7 +68,7 @@ export async function sendFCMNotification(
       try {
         Logger.log(`[DEBUG] Sending to ${device.platform ?? 'unknown'} device: ${device.device_id ?? 'unknown'}`)
 
-        await getMessaging().send({
+        await getFirebaseMessaging().send({
           token: device.fcm_token,
           notification: {
             title: payload.title,

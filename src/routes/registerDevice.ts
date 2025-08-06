@@ -128,8 +128,8 @@ export default {
           .insert({
             identity_key: identityKey,
             fcm_token: fcmToken.trim(),
-            device_id: deviceId?.trim() || null,
-            platform: platform || null,
+            device_id: deviceId?.trim() ?? null,
+            platform: platform ?? null,
             created_at: now,
             updated_at: now,
             active: true,
@@ -138,8 +138,8 @@ export default {
           .onConflict('fcm_token')
           .merge({
             identity_key: identityKey, // Update identity key in case token was reassigned
-            device_id: deviceId?.trim() || null,
-            platform: platform || null,
+            device_id: deviceId?.trim() ?? null,
+            platform: platform ?? null,
             updated_at: now,
             active: true,
             last_used: now
@@ -152,7 +152,6 @@ export default {
           message: 'Device registered successfully for push notifications',
           deviceId: deviceRegistrationId
         })
-
       } catch (dbError: any) {
         Logger.error('[ERROR] Database error during device registration:', dbError)
         return res.status(500).json({
@@ -161,7 +160,6 @@ export default {
           description: 'Failed to register device.'
         })
       }
-
     } catch (error) {
       Logger.error('[ERROR] Internal Server Error in registerDevice:', error)
       return res.status(500).json({

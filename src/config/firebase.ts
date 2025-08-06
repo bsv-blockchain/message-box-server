@@ -1,124 +1,110 @@
-import './env';
-import * as admin from "firebase-admin";
-import * as path from "path";
-import * as webpush from "web-push";
+import { initializeApp, getApps, getApp, cert, applicationDefault, type App } from 'firebase-admin/app'
+import { getMessaging, type Messaging, type Message } from 'firebase-admin/messaging'
+import { getFirestore, type Firestore } from 'firebase-admin/firestore'
+import * as path from 'path'
+import dotenv from 'dotenv'
 
-let firebaseApp: admin.app.App | null = null;
+dotenv.config()
 
-// Configure web-push VAPID details
-if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY && process.env.VAPID_SUBJECT) {
-  webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT,
-    process.env.VAPID_PUBLIC_KEY,
-    process.env.VAPID_PRIVATE_KEY
-  );
-  console.log('🌐 Web Push VAPID keys configured successfully');
-} else {
-  console.warn('⚠️ Web Push VAPID keys not configured - Web Push notifications will not work');
-}
-
-/**
- * Send a Web Push notification
- */
-export async function sendWebPushNotification(
-  subscription: { endpoint: string; keys: { p256dh: string; auth: string } },
-  payload: FCMPayload
-): Promise<SendNotificationResult> {
-  try {
-    console.log('📤 Sending Web Push notification...');
-
-    const webPushSubscription = {
-      endpoint: subscription.endpoint,
-      keys: {
-        p256dh: subscription.keys.p256dh,
-        auth: subscription.keys.auth,
-      },
-    };
-
-    const notificationPayload = JSON.stringify({
-      title: payload.title,
-      body: payload.body,
-      icon: payload.icon || '/default-icon.png',
-      badge: payload.badge || '/default-badge.png',
-      data: payload.data || {},
-    });
-
-    const response = await webpush.sendNotification(webPushSubscription, notificationPayload);
-    console.log('✅ Web Push notification sent successfully');
-
-    return { success: true, messageId: 'web-push-' + Date.now() };
-  } catch (error) {
-    console.error('❌ Failed to send Web Push notification:', error);
-    throw error;
-  }
-}
+let firebaseApp: App | null = null
 
 /**
  * Initialize Firebase Admin SDK
  */
-export function initializeFirebase(): admin.app.App {
-  if (firebaseApp) {
-    console.log("🔥 Firebase already initialized");
-    return firebaseApp;
+export function initializeFirebase(): App {
+  if (firebaseApp != null) {
+    console.log('🔥 Firebase already initialized')
+    return firebaseApp
   }
 
   try {
-    const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
-    const projectId = process.env.FIREBASE_PROJECT_ID;
+    const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON
+    const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH
+    const projectId = process.env.FIREBASE_PROJECT_ID
 
-    if (!projectId) {
-      throw new Error("FIREBASE_PROJECT_ID environment variable is required");
+    if (projectId == null || projectId === '') {
+      throw new Error('FIREBASE_PROJECT_ID environment variable is required')
     }
 
-    let credential: admin.credential.Credential;
+    let firebaseCredential: any // Will be assigned based on auth method
 
-    if (serviceAccountPath) {
-      console.log("Using Firebase service account key file");
-      const absolutePath = path.resolve(process.cwd(), serviceAccountPath);
-      credential = admin.credential.cert(require(absolutePath));
+    if (serviceAccountJson != null && serviceAccountJson !== '') {
+      console.log('Using Firebase service account from environment variable')
+      try {
+        console.log('Service account JSON length:', serviceAccountJson.length)
+        console.log('First 100 chars:', serviceAccountJson.substring(0, 100))
+
+        // Debug credential functions
+        console.log('cert function:', typeof cert)
+        console.log('applicationDefault function:', typeof applicationDefault)
+
+        const serviceAccount = JSON.parse(serviceAccountJson)
+        console.log('Parsed service account keys:', Object.keys(serviceAccount ?? {}))
+
+        if (serviceAccount == null || typeof serviceAccount !== 'object') {
+          throw new Error('Parsed service account is not a valid object')
+        }
+
+        if (serviceAccount.private_key == null || serviceAccount.client_email == null || serviceAccount.project_id == null) {
+          throw new Error('Service account missing required fields (private_key, client_email, project_id)')
+        }
+
+        firebaseCredential = cert(serviceAccount)
+        console.log('✅ Firebase credential created successfully')
+      } catch (parseError) {
+        console.error('❌ Firebase service account parsing failed:', parseError)
+        throw new Error(`Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON: ${(parseError instanceof Error) ? parseError.message : 'Invalid JSON'}`)
+      }
+    } else if (serviceAccountPath != null && serviceAccountPath !== '') {
+      console.log('Using Firebase service account key file')
+      const absolutePath = path.resolve(process.cwd(), serviceAccountPath)
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      firebaseCredential = cert(require(absolutePath))
     } else {
-      console.log("Using Firebase default credentials");
-      credential = admin.credential.applicationDefault();
+      console.log('Using Firebase default credentials')
+      firebaseCredential = applicationDefault()
     }
 
-    firebaseApp = admin.initializeApp({
-      credential: credential,
-      projectId: projectId,
-    });
+    // Check if Firebase app is already initialized
+    if (getApps().length === 0) {
+      firebaseApp = initializeApp({
+        credential: firebaseCredential,
+        projectId
+      })
+    } else {
+      firebaseApp = getApp()
+    }
 
-    console.log("✅ Firebase Admin SDK initialized successfully");
-    return firebaseApp;
+    console.log('✅ Firebase Admin SDK initialized successfully')
+    return firebaseApp
   } catch (error) {
-    console.error(
-      "❌ Firebase initialization failed:",
-      (error as Error).message,
-    );
-    throw error;
+    console.error('❌ Firebase initialization failed:', error)
+    throw error
   }
 }
 
 /**
  * Get Firebase Messaging instance
  */
-export function getMessaging(): admin.messaging.Messaging {
-  if (!firebaseApp) {
+export function getFirebaseMessaging (): Messaging {
+  if (firebaseApp == null) {
     throw new Error(
-      "Firebase not initialized. Call initializeFirebase() first.",
-    );
+      'Firebase not initialized. Call initializeFirebase() first.'
+    )
   }
-  return admin.messaging();
+  return getMessaging(firebaseApp)
 }
 
 /**
- * Get Firestore instance
+ * Get Firestore instance  
  */
-export function getFirestore(): admin.firestore.Firestore {
-  if (!firebaseApp) {
+export function getFirebaseFirestore (): Firestore {
+  if (firebaseApp == null) {
     throw new Error(
-      "Firebase not initialized. Call initializeFirebase() first.",
-    );
+      'Firebase not initialized. Call initializeFirebase() first.'
+    )
   }
-  return admin.firestore();
+  return getFirestore(firebaseApp)
 }
 
 interface FCMPayload {
@@ -142,9 +128,9 @@ export async function sendNotification(
   payload: FCMPayload,
 ): Promise<SendNotificationResult> {
   try {
-    const messaging = getMessaging();
+    const messaging = getFirebaseMessaging()
 
-    const message: admin.messaging.Message = {
+    const message: Message = {
       token: fcmToken,
       notification: {
         title: payload.title,
