@@ -39,10 +39,10 @@ export interface GetPermissionRequest extends AuthRequest {
  *     parameters:
  *       - in: query
  *         name: sender
- *         required: true
+ *         required: false
  *         schema:
  *           type: string
- *         description: identityKey of the sender to check
+ *         description: identityKey of the sender to check (omit for box-wide default)
  *       - in: query
  *         name: messageBox
  *         required: true
@@ -79,50 +79,70 @@ export default {
       const { sender, messageBox } = req.query
 
       // Validate required parameters
-      if (sender == null || messageBox == null) {
+      if (messageBox == null) {
         Logger.log('[DEBUG] Missing required parameters for get permission')
         return res.status(400).json({
           status: 'error',
           code: 'ERR_MISSING_PARAMETERS',
-          description: 'sender and messageBox parameters are required.'
+          description: 'messageBox parameter is required.'
         })
       }
 
-      // Validate sender public key format
-      try {
-        PublicKey.fromString(sender)
-      } catch (error) {
-        Logger.log('[DEBUG] Invalid sender public key format')
-        return res.status(400).json({
-          status: 'error',
-          code: 'ERR_INVALID_PUBLIC_KEY',
-          description: 'Invalid sender public key format.'
-        })
+      // Validate sender public key format if provided
+      if (sender != null) {
+        try {
+          PublicKey.fromString(sender)
+        } catch (error) {
+          Logger.log('[DEBUG] Invalid sender public key format')
+          return res.status(400).json({
+            status: 'error',
+            code: 'ERR_INVALID_PUBLIC_KEY',
+            description: 'Invalid sender public key format.'
+          })
+        }
       }
 
       const recipient = req.auth.identityKey
 
       // Get message permission directly from database
+      const whereClause: any = {
+        recipient,
+        message_box: messageBox
+      }
+
+      // Add sender condition (null for box-wide, specific sender for sender-specific)
+      if (sender != null) {
+        whereClause.sender = sender
+      } else {
+        whereClause.sender = null
+      }
+
       const permission = await knex('message_permissions')
-        .where({
-          recipient,
-          sender,
-          message_box: messageBox
-        })
+        .where(whereClause)
         .select('recipient_fee', 'created_at', 'updated_at')
         .first()
 
-      Logger.log(`[DEBUG] Permission record for ${sender} -> ${recipient} (${messageBox}): ${JSON.stringify(permission)}`)
+      Logger.log(`[DEBUG] Permission record for ${sender ?? 'box-wide'} -> ${recipient} (${messageBox}): ${JSON.stringify(permission)}`)
 
       if (permission != null) {
+        // Helper function to determine status from recipient fee
+        const getStatusFromFee = (fee: number): 'always_allow' | 'blocked' | 'payment_required' => {
+          if (fee === -1) return 'blocked'
+          if (fee === 0) return 'always_allow'
+          return 'payment_required'
+        }
+
         // Permission is set, return it
         return res.status(200).json({
           status: 'success',
-          description: `Permission setting found for sender ${sender} to ${messageBox}.`,
+          description: sender != null
+            ? `Permission setting found for sender ${sender} to ${messageBox}.`
+            : `Box-wide permission setting found for ${messageBox}.`,
           permission: {
-            sender, // Required?
+            sender: sender ?? null,
             messageBox,
             recipientFee: permission.recipient_fee,
+            status: getStatusFromFee(permission.recipient_fee),
             createdAt: permission.created_at.toISOString(),
             updatedAt: permission.updated_at.toISOString()
           }
@@ -131,7 +151,9 @@ export default {
         // No permission set, return undefined
         return res.status(200).json({
           status: 'success',
-          description: `No permission setting found for sender ${sender} to ${messageBox}.`,
+          description: sender != null
+            ? `No permission setting found for sender ${sender} to ${messageBox}.`
+            : `No box-wide permission setting found for ${messageBox}.`,
           permission: undefined
         })
       }

@@ -38,7 +38,7 @@ export interface SetPermissionRequestType extends AuthRequest {
  *                 description: messageBox type (e.g., 'notifications', 'inbox')
  *               recipientFee:
  *                 type: integer
- *                 description: Fee level (-1=always allow, 0=blocked, >0=satoshi amount required)
+ *                 description: Fee level (-1=blocked, 0=always allow, >0=satoshi amount required)
  *     responses:
  *       200:
  *         description: Permission successfully set/updated

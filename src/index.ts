@@ -38,10 +38,10 @@ const {
   ROUTING_PREFIX = ''
 } = process.env
 
-if (NODE_ENV === 'development' || process.env.LOGGING_ENABLED === 'true') {
-  Logger.enable()
-}
-
+// if (NODE_ENV === 'development' || process.env.LOGGING_ENABLED === 'true') {
+//   Logger.enable()
+// }
+Logger.enable()
 // Determine which port to listen on
 const parsedPort = Number(PORT)
 const parsedEnvPort = Number(process.env.HTTP_PORT)

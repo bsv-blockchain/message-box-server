@@ -9,7 +9,7 @@ export async function up(knex: Knex): Promise<void> {
     table.string('recipient', 255).notNullable() // identityKey of who this permission belongs to
     table.string('sender', 255).nullable() // identityKey of sender (NULL for box-wide defaults)
     table.string('message_box', 255).notNullable() // messageBox type (e.g., 'notifications', 'inbox', etc.)
-    table.integer('recipient_fee').notNullable() // -1 = always allow, 0 = block all, >0 = satoshi amount required
+    table.integer('recipient_fee').notNullable() // -1 = block all, 0 = always allow, >0 = satoshi amount required
 
     table.unique(['recipient', 'sender', 'message_box'])
 

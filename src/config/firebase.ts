@@ -86,7 +86,7 @@ export function initializeFirebase(): App {
 /**
  * Get Firebase Messaging instance
  */
-export function getFirebaseMessaging (): Messaging {
+export function getFirebaseMessaging(): Messaging {
   if (firebaseApp == null) {
     throw new Error(
       'Firebase not initialized. Call initializeFirebase() first.'
@@ -98,7 +98,7 @@ export function getFirebaseMessaging (): Messaging {
 /**
  * Get Firestore instance  
  */
-export function getFirebaseFirestore (): Firestore {
+export function getFirebaseFirestore(): Firestore {
   if (firebaseApp == null) {
     throw new Error(
       'Firebase not initialized. Call initializeFirebase() first.'

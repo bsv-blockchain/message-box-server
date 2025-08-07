@@ -94,7 +94,7 @@ export interface ListPermissionsRequest extends AuthRequest {
  *                         description: MessageBox type
  *                       recipientFee:
  *                         type: integer
- *                         description: Fee setting (-1=always allow, 0=block all, >0=satoshi amount)
+ *                         description: Fee setting (-1=block all, 0=always allow, >0=satoshi amount)
  *                       created_at:
  *                         type: string
  *                         format: date-time

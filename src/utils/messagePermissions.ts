@@ -32,82 +32,12 @@ export interface FeeCalculationResult {
 }
 
 /**
- * Calculate message fees and check permissions
- */
-export async function calculateMessageFees(
-  recipient: PubKeyHex,
-  sender: PubKeyHex | null,
-  messageBox: string,
-  paymentAmount: number = 0
-): Promise<FeeCalculationResult> {
-  try {
-    const deliveryFee = await getServerDeliveryFee(messageBox)
-    const recipientFee = await getRecipientFee(recipient, sender, messageBox)
-
-    // Check if blocked (0) or always allowed (-1)
-    if (recipientFee === 0) {
-      return {
-        delivery_fee: deliveryFee,
-        recipient_fee: recipientFee,
-        total_cost: 0,
-        allowed: false,
-        requires_payment: false,
-        blocked_reason: 'Sender is blocked by recipient'
-      }
-    }
-
-    // Always allow (-1) - only charge delivery fee
-    if (recipientFee === -1) {
-      const totalCost = deliveryFee
-      const requiresPayment = totalCost > 0
-      const allowed = !requiresPayment || paymentAmount >= totalCost
-
-      return {
-        delivery_fee: deliveryFee,
-        recipient_fee: recipientFee, // Pass the value set to higher layers
-        total_cost: totalCost,
-        allowed,
-        requires_payment: requiresPayment,
-        ...(requiresPayment && paymentAmount < totalCost && {
-          blocked_reason: `Insufficient payment: ${paymentAmount} < ${totalCost} required`
-        })
-      }
-    }
-
-    const totalCost = deliveryFee + recipientFee
-    const requiresPayment = totalCost > 0
-    const allowed = !requiresPayment || paymentAmount >= totalCost
-
-    return {
-      delivery_fee: deliveryFee,
-      recipient_fee: recipientFee,
-      total_cost: totalCost,
-      allowed,
-      requires_payment: requiresPayment,
-      ...(requiresPayment && paymentAmount < totalCost && {
-        blocked_reason: `Insufficient payment: ${paymentAmount} < ${totalCost} required`
-      })
-    }
-  } catch (error) {
-    Logger.error('[ERROR] Error calculating message fees:', error)
-    return {
-      delivery_fee: 0,
-      recipient_fee: 0,
-      total_cost: 0,
-      allowed: false,
-      requires_payment: false,
-      blocked_reason: 'Error calculating fees'
-    }
-  }
-}
-
-/**
  * Get server delivery fee for a message box type
  */
 export async function getServerDeliveryFee(messageBox: string): Promise<number> {
   try {
     const serverFee = await knex('server_fees')
-      .where('message_box', messageBox)
+      .where({ message_box: messageBox })
       .select('delivery_fee')
       .first()
 
@@ -127,13 +57,16 @@ export async function getRecipientFee(
   messageBox: string
 ): Promise<number> {
   try {
+    // Debug parameter types
+    Logger.log(`[DEBUG] getRecipientFee params - recipient: ${typeof recipient} (${JSON.stringify(recipient)}), sender: ${typeof sender} (${JSON.stringify(sender)}), messageBox: ${typeof messageBox} (${JSON.stringify(messageBox)})`)
+    
     // First try sender-specific permission
     if (sender != null) {
       const senderSpecific = await knex('message_permissions')
         .where({
-          recipient,
-          sender,
-          message_box: messageBox
+          recipient: String(recipient),
+          sender: String(sender),
+          message_box: String(messageBox)
         })
         .select('recipient_fee')
         .first()
@@ -146,9 +79,9 @@ export async function getRecipientFee(
     // Fallback to box-wide default
     const boxWideDefault = await knex('message_permissions')
       .where({
-        recipient,
+        recipient: String(recipient),
         sender: null, // Box-wide default
-        message_box: messageBox
+        message_box: String(messageBox)
       })
       .select('recipient_fee')
       .first()
@@ -158,11 +91,11 @@ export async function getRecipientFee(
     }
 
     // Auto-create box-wide default if none exists
-    const defaultFee = getSmartDefaultFee(messageBox)
+    const defaultFee = getSmartDefaultFee(String(messageBox))
     await knex('message_permissions').insert({
-      recipient,
+      recipient: String(recipient),
       sender: null,
-      message_box: messageBox,
+      message_box: String(messageBox),
       recipient_fee: defaultFee,
       created_at: new Date(),
       updated_at: new Date()
