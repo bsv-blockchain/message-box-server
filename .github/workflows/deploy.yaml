@@ -1,0 +1,105 @@
+name: Deploy
+on:
+  push:
+    branches:
+      - master
+      - production
+
+env:                        # ── static values
+  GCR_HOST:        us.gcr.io
+  GCP_PROJECT_ID:  babbage-private
+  IMAGE_NAME:      messagebox-server
+
+jobs:
+  build-and-deploy:
+    name: Build-&-Deploy to Cloud Run
+    runs-on: ubuntu-latest
+
+    permissions:            # required by google-github-actions/auth
+      contents: read
+      id-token: write
+
+    env:                    # ── values that depend on the branch
+      CURRENT_BRANCH: ${{ github.ref_name == 'production' && 'production' || 'master' }}
+      CWI_NPM_TOKEN: ${{ secrets.CWI_NPM_TOKEN }}
+
+    steps:
+    # ──────── 1. Sources & toolchain ──────────────────────────────────
+    - name: Checkout source
+      uses: actions/checkout@v4
+
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Install dependencies
+      run: npm ci
+
+    # ──────── 2. Authenticate for Docker push ────────────────────────
+    - name: Auth (push to Container Registry)
+      id: auth-push
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.DOCKER_REGISTRY_PUSH_KEY }}
+
+    - name: Configure Docker for GCR
+      run: |
+        # This makes `docker push` pick up the credentials from the step above
+        gcloud --quiet auth configure-docker ${{ env.GCR_HOST }}
+
+    # ──────── 3. Build & push image ───────────────────────────────────
+    - name: Build and push Docker image
+      id: build
+      env:
+        IMAGE_TAGS: |
+          latest
+          ${{ env.CURRENT_BRANCH }}-${{ github.sha }}
+      run: |
+        set -e
+        for TAG in $IMAGE_TAGS; do
+          IMAGE_URI=${{ env.GCR_HOST }}/${{ env.GCP_PROJECT_ID }}/${{ env.IMAGE_NAME }}:${TAG}
+          echo "Building $IMAGE_URI"
+          docker build -t "$IMAGE_URI" .
+          docker push  "$IMAGE_URI"
+        done
+        # expose the per-commit tag for later steps
+        echo "IMAGE_URI=${{ env.GCR_HOST }}/${{ env.GCP_PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ env.CURRENT_BRANCH }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+    # ──────── 4. Generate service YAML ────────────────────────────────
+    - name: Create service description file
+      run: ./scripts/mkenv.sh service.${{ env.CURRENT_BRANCH }}.yaml
+      env:
+        IMAGE: "${{ steps.build.outputs.IMAGE_URI }}"
+        SERVICE: ${{ env.CURRENT_BRANCH == 'production' && 'prod-messagebox-server' || 'staging-messagebox-server' }}
+        BSV_NETWORK: ${{ env.CURRENT_BRANCH == 'production' && 'mainnet' || 'testnet' }}
+        NODE_ENV: ${{ env.CURRENT_BRANCH == 'production' && 'production' || 'staging' }}
+        WALLET_STORAGE_URL: ${{ env.CURRENT_BRANCH == 'production' && secrets.PROD_WALLET_STORAGE_URL || secrets.STAGING_WALLET_STORAGE_URL }}
+        SERVER_PRIVATE_KEY: ${{ env.CURRENT_BRANCH == 'production' && secrets.PROD_SERVER_PRIVATE_KEY || secrets.STAGING_SERVER_PRIVATE_KEY }}
+        KNEX_DB_CONNECTION: ${{ env.CURRENT_BRANCH == 'production' && secrets.PROD_KNEX_DB_CONNECTION || secrets.STAGING_KNEX_DB_CONNECTION }}
+        LOGGING_ENABLED: ${{ env.CURRENT_BRANCH == 'production' && secrets.PROD_LOGGING_ENABLED || secrets.STAGING_LOGGING_ENABLED }}
+        FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
+    # ──────── 5. Authenticate for deployment ──────────────────────────
+    - name: Auth (deploy to Cloud Run)
+      id: auth-deploy
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GCP_DEPLOY_CREDS }}
+
+    # ──────── 6. Deploy to Cloud Run ───────────────────────────────────
+    - name: Deploy to Cloud Run
+      uses: google-github-actions/deploy-cloudrun@v1
+      with:
+        metadata: service.${{ env.CURRENT_BRANCH }}.yaml
+        region:   us-west1
+
+    # ──────── 7. Post-deploy tweaks ────────────────────────────────────
+    - name: Set min instances & enable CPU boost
+      run: |
+        SERVICE_NAME=$( [ "${{ env.CURRENT_BRANCH }}" = "production" ] && echo "prod-storage" || echo "staging-storage" )
+        gcloud run services update "${SERVICE_NAME}" \
+          --region=us-west1 \
+          --min-instances=1 \
+          --cpu-boost
