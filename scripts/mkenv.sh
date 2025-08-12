@@ -25,8 +25,6 @@ perl -E'
     BSV_NETWORK \
     WALLET_STORAGE_URL \
     LOGGING_ENABLED \
-    FIREBASE_SERVICE_ACCOUNT_JSON \
-    FIREBASE_PROJECT_ID \
     SERVER_PRIVATE_KEY >> $1
 
 echo "Built! Contents of $1:"
