@@ -47,7 +47,7 @@ const parsedPort = Number(PORT)
 const parsedEnvPort = Number(process.env.HTTP_PORT)
 
 const HTTP_PORT: number = NODE_ENV !== 'development'
-  ? 400
+  ? 3000
   : !isNaN(parsedPort) && parsedPort > 0
     ? parsedPort
     : !isNaN(parsedEnvPort) && parsedEnvPort > 0
