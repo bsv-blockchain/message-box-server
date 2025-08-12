@@ -26,6 +26,7 @@ const knex: knexLib.Knex = (knexLib as any).default?.(
 export interface FCMPayload {
   title: string
   messageId: string
+  originator?: string
 }
 
 /**
@@ -73,7 +74,36 @@ export async function sendFCMNotification(
           notification: {
             title: payload.title,
             body: payload.messageId
-          }
+          },
+          // Android configuration for headless service
+          android: {
+            priority: 'high',
+            data: {
+              messageId: payload.messageId,
+              originator: payload.originator || 'unknown'
+            }
+          },
+          // iOS configuration for mutable content and Notification Service Extension
+          apns: {
+            headers: {
+              'apns-push-type': 'alert', // required for iOS 13+
+              'apns-priority': '10',     // deliver immediately
+              // optional: 'apns-topic': '<your app bundle id>'  // FCM fills this automatically
+            },
+            payload: {
+              aps: {
+                'mutable-content': 1,
+                alert: {                 // include an alert so NSE can modify it
+                  title: payload.title,
+                  body: payload.messageId,
+                },
+                // do NOT set 'content-available': 1 unless you also want background fetch
+              },
+              // custom keys your NSE can read:
+              messageId: payload.messageId,
+              originator: payload.originator ?? 'unknown',
+            },
+          },
         })
 
         // Update last_used timestamp on successful send
