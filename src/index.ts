@@ -24,6 +24,7 @@ import { PublicKey } from '@bsv/sdk'
 import { Logger } from './utils/logger.js'
 import { AuthSocketServer } from '@bsv/authsocket'
 import * as crypto from 'crypto'
+import { initializeFirebase } from './config/firebase.js'
 (global.self as any) = { crypto }
 
 dotenv.config()
@@ -37,16 +38,16 @@ const {
   ROUTING_PREFIX = ''
 } = process.env
 
-if (NODE_ENV === 'development' || process.env.LOGGING_ENABLED === 'true') {
-  Logger.enable()
-}
-
+// if (NODE_ENV === 'development' || process.env.LOGGING_ENABLED === 'true') {
+//   Logger.enable()
+// }
+Logger.enable()
 // Determine which port to listen on
 const parsedPort = Number(PORT)
 const parsedEnvPort = Number(process.env.HTTP_PORT)
 
 const HTTP_PORT: number = NODE_ENV !== 'development'
-  ? 3000
+  ? 400
   : !isNaN(parsedPort) && parsedPort > 0
     ? parsedPort
     : !isNaN(parsedEnvPort) && parsedEnvPort > 0
@@ -57,6 +58,9 @@ const HTTP_PORT: number = NODE_ENV !== 'development'
 if (SERVER_PRIVATE_KEY === undefined || SERVER_PRIVATE_KEY === null || SERVER_PRIVATE_KEY.trim() === '') {
   throw new Error('SERVER_PRIVATE_KEY is not defined in the environment variables.')
 }
+
+// Initialize Firebase Admin
+initializeFirebase()
 
 // Create HTTP server
 /* eslint-disable @typescript-eslint/no-misused-promises */
@@ -335,19 +339,19 @@ if (NODE_ENV !== 'test') {
   http.listen(HTTP_PORT, () => {
     Logger.log('MessageBox listening on port', HTTP_PORT)
 
-    if (
-      NODE_ENV !== 'development' &&
-      process.env.SKIP_NGINX !== 'true'
-    ) {
-      spawn('nginx', [], { stdio: ['inherit', 'inherit', 'inherit'] })
-    }
+      // if (
+      //   NODE_ENV !== 'development' &&
+      //   process.env.SKIP_NGINX !== 'true'
+      // ) {
+      //   spawn('nginx', [], { stdio: ['inherit', 'inherit', 'inherit'] })
+      // }
 
-    // Run DB migrations immediately, no delay needed with container healthchecks
-    ; (async () => {
-      await knex.migrate.latest()
-    })().catch((error) => {
-      Logger.error('[STARTUP ERROR]', error)
-    })
+      // Run DB migrations immediately, no delay needed with container healthchecks
+      ; (async () => {
+        await knex.migrate.latest()
+      })().catch((error) => {
+        Logger.error('[STARTUP ERROR]', error)
+      })
   })
 
   start().catch(error => {

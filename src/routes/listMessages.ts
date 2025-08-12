@@ -81,10 +81,10 @@ interface ListMessagesRequest extends AuthRequest {
  *                         type: string
  *                       sender:
  *                         type: string
- *                       created_at:
+ *                       createdAt:
  *                         type: string
  *                         format: date-time
- *                       updated_at:
+ *                       updatedAt:
  *                         type: string
  *                         format: date-time
  *       400:
@@ -185,17 +185,19 @@ export default {
         })
         .select('messageId', 'body', 'sender', 'created_at', 'updated_at')
 
-      // Normalize all message bodies to strings
-      for (const message of messages) {
-        if (typeof message.body !== 'string') {
-          message.body = JSON.stringify(message.body)
-        }
-      }
+      // Normalize all message bodies to strings and convert to camelCase
+      const formattedMessages = messages.map(message => ({
+        messageId: message.messageId,
+        body: typeof message.body === 'string' ? message.body : JSON.stringify(message.body),
+        sender: message.sender,
+        createdAt: message.created_at,
+        updatedAt: message.updated_at
+      }))
 
       // Return a list of matching messages
       return res.status(200).json({
         status: 'success',
-        messages
+        messages: formattedMessages
       })
     } catch (e) {
       console.error(e)

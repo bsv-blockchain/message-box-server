@@ -16,9 +16,12 @@
 import { Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
-import { PublicKey } from '@bsv/sdk'
+import { AtomicBEEF, Base64String, BasketStringUnder300Bytes, BooleanDefaultTrue, DescriptionString5to50Bytes, Hash, LabelStringUnder300Bytes, OutputTagStringUnder300Bytes, P2PKH, PositiveIntegerOrZero, PrivateKey, PubKeyHex, PublicKey, Utils } from '@bsv/sdk'
 import { Logger } from '../utils/logger.js'
 import { AuthRequest } from '@bsv/auth-express-middleware'
+import { sendFCMNotification } from '../utils/sendFCMNotification.js'
+import { getRecipientFee, getServerDeliveryFee, shouldUseFCMDelivery } from '../utils/messagePermissions.js'
+import { getWallet } from '../app.js'
 
 // Determine the environment (default to development)
 const { NODE_ENV = 'development', SERVER_PRIVATE_KEY } = process.env
@@ -38,16 +41,38 @@ const knex: knexLib.Knex = (knexLib as any).default?.(
 
 // Type definition for the incoming message format
 export interface Message {
-  recipient: string
+  recipient: PubKeyHex
   messageBox: string
   messageId: string
   body: string
+}
+
+export interface Payment {
+  tx: AtomicBEEF
+  outputs: Array<{
+    outputIndex: PositiveIntegerOrZero
+    protocol: 'wallet payment' | 'basket insertion'
+    paymentRemittance?: {
+      derivationPrefix: Base64String
+      derivationSuffix: Base64String
+      senderIdentityKey: PubKeyHex
+    }
+    insertionRemittance?: {
+      basket: BasketStringUnder300Bytes
+      customInstructions?: string
+      tags?: OutputTagStringUnder300Bytes[]
+    } // No output description?
+  }>
+  description: DescriptionString5to50Bytes
+  labels?: LabelStringUnder300Bytes[]
+  seekPermission?: BooleanDefaultTrue
 }
 
 // Extended Express request type with authentication
 export interface SendMessageRequest extends AuthRequest {
   body: {
     message?: Message
+    payment?: Payment
   }
 }
 
@@ -60,7 +85,7 @@ if (SERVER_PRIVATE_KEY == null || SERVER_PRIVATE_KEY.trim() === '') {
  * @function calculateMessagePrice
  * @description Determines the price (in satoshis) to send a message, optionally with priority.
  */
-export function calculateMessagePrice (message: string, priority: boolean = false): number {
+export function calculateMessagePrice(message: string, priority: boolean = false): number {
   const basePrice = 2 // Base fee in satoshis
   const sizeFactor = Math.ceil(Buffer.byteLength(message, 'utf8') / 1024) * 3 // Satoshis per KB
 
@@ -176,8 +201,17 @@ export default {
     Logger.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
     Logger.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2))
 
+    const senderKey = req.auth?.identityKey
+    if (senderKey == null) {
+      return res.status(401).json({
+        status: 'error',
+        code: 'ERR_AUTH_REQUIRED',
+        description: 'Authentication required'
+      })
+    }
+
     try {
-      const { message } = req.body
+      const { message, payment } = req.body
       // Validate presence and structure of the message
       if (message == null) {
         Logger.error('[ERROR] No message provided in request body!')
@@ -246,24 +280,161 @@ export default {
         .select('messageBoxId')
         .first()
 
-      // Insert the message into the DB
+      let recipientPaymentData: any = undefined
+
+      try {
+        // if (payment?.outputs != null) {
+        //   paymentAmount = payment.outputs.reduce((acc, output) => acc + output.amount, 0)
+        // }
+
+        Logger.log(`[DEBUG] Checking permissions for ${senderKey} -> ${message.recipient} (${message.messageBox})`)
+
+        // Calculate fees and check permissions (this will auto-create box-wide defaults)
+        const deliveryFee = await getServerDeliveryFee(message.messageBox)
+        const recipientFee = await getRecipientFee(message.recipient, senderKey, message.messageBox)
+
+        // Determine if this is allowed based on fees and payment provided
+        // Recipient fee standard: -1 = block all, 0 = always allow, >0 = payment required
+        let allowed = true
+        let requiresPayment = false
+        let blockedReason: string | undefined
+        let totalRequired = deliveryFee // Start with delivery fee
+
+        if (recipientFee === -1) {
+          // Block all messages
+          allowed = false
+          blockedReason = `Messages to ${message.recipient} are blocked`
+        } else if (recipientFee === 0) {
+          // Always allow, no recipient fee required
+          allowed = true
+          requiresPayment = deliveryFee > 0 // Only delivery fee if any
+        } else if (recipientFee > 0) {
+          // Payment required (recipient fee + delivery fee)
+          allowed = true
+          requiresPayment = true
+          totalRequired = deliveryFee + recipientFee
+        }
+
+        // Create fee result object for downstream logic
+        const feeResult = {
+          allowed,
+          requires_payment: requiresPayment,
+          blocked_reason: blockedReason,
+          delivery_fee: deliveryFee,
+          recipient_fee: recipientFee,
+          total_cost: totalRequired
+        }
+
+        if (!feeResult.allowed) {
+          Logger.log(`[DEBUG] Message delivery blocked: ${feeResult.blocked_reason}`)
+          return res.status(403).json({
+            status: 'error',
+            code: 'ERR_DELIVERY_BLOCKED',
+            description: feeResult.blocked_reason ?? 'Message delivery not allowed',
+            feeInfo: {
+              deliveryFee: feeResult.delivery_fee,
+              recipientFee: feeResult.recipient_fee,
+              totalRequired: feeResult.total_cost
+            }
+          })
+        }
+
+        // Handle payment validation and internalization BEFORE storing message
+        if (feeResult.requires_payment) {
+          Logger.log(`[DEBUG] Processing payment of ${feeResult.total_cost} satoshis (delivery: ${feeResult.delivery_fee}, recipient: ${feeResult.recipient_fee})`)
+
+          if (payment?.tx == null) {
+            return res.status(400).json({
+              status: 'error',
+              code: 'ERR_MISSING_PAYMENT_TX',
+              description: 'Payment transaction data is required'
+            })
+          }
+
+          // Separate delivery fee outputs from recipient fee outputs based on actual fee structure
+          const deliveryOutputsToInternalize = []
+          let recipientOutputStartIndex = 0
+
+          // If there's a delivery fee, the first output(s) are for delivery
+          if (feeResult.delivery_fee > 0) {
+            deliveryOutputsToInternalize.push(payment.outputs[0])
+            recipientOutputStartIndex = 1 // Recipient outputs start at index 1
+          }
+          // If no delivery fee, all outputs are for the recipient (start at index 0)
+
+          // Internalize delivery fee for the server if present
+          if (deliveryOutputsToInternalize.length > 0) {
+            try {
+              const wallet = await getWallet()
+              const internalizeResult = await wallet.internalizeAction({
+                tx: payment.tx,
+                outputs: deliveryOutputsToInternalize,
+                description: payment.description ?? 'MessageBox delivery payment'
+              })
+
+              if (!internalizeResult.accepted) {
+                return res.status(400).json({
+                  status: 'error',
+                  code: 'ERR_INSUFFICIENT_PAYMENT',
+                  description: 'Payment was not accepted! Contact the server host for more information.'
+                })
+              }
+
+              Logger.log('[DEBUG] Server delivery fee payment internalized successfully')
+            } catch (error) {
+              Logger.error('[ERROR] Failed to internalize delivery fee payment:', error)
+              return res.status(500).json({
+                status: 'error',
+                code: 'ERR_INTERNALIZE_FAILED',
+                description: `Failed to internalize payment: ${error instanceof Error ? error.message : 'Unknown error'}`
+              })
+            }
+          }
+
+          // Prepare recipient payment data for storage
+          if (feeResult.recipient_fee > 0 && payment.outputs.length > recipientOutputStartIndex) {
+            const recipientOutputs = payment.outputs.slice(recipientOutputStartIndex)
+
+            recipientPaymentData = {
+              ...payment,
+              outputs: recipientOutputs
+            }
+            Logger.log(`[DEBUG] Prepared ${recipientOutputs.length} recipient fee output(s) for storage (starting from index ${recipientOutputStartIndex})`)
+          } else if (feeResult.recipient_fee > 0) {
+            Logger.log('[DEBUG] Recipient fee required but no recipient outputs found in payment data')
+          } else {
+            Logger.log('[DEBUG] No recipient fee required')
+          }
+        }
+      } catch (permissionError) {
+        Logger.error('[ERROR] Error checking message permissions:', permissionError)
+        return res.status(500).json({
+          status: 'error',
+          code: 'ERR_PERMISSION_CHECK_FAILED',
+          description: 'Failed to check message permissions'
+        })
+      }
+
+      // Permission check passed - now store the message
       Logger.log('[DEBUG] Inserting message into messages table...')
       try {
         const messageBoxId = messageBox?.messageBoxId ?? null
 
-        // Normalize the message body into a string
-        const normalizedBody =
-          typeof message.body === 'string'
-            ? message.body
-            : JSON.stringify(message.body)
+        // Store the complete request body (including recipient payment data) as a JSON string
+        // This allows recipients to access payment information when listing messages
+        // Only recipient fee payments are stored - delivery fees are already processed by the server
+        const completeMessageData = {
+          message: message.body,
+          ...(recipientPaymentData != null && { payment: recipientPaymentData })
+        }
 
         await knex('messages')
           .insert({
             messageId: message.messageId,
             messageBoxId,
-            sender: req.auth?.identityKey ?? null,
+            sender: req.auth?.identityKey,
             recipient: message.recipient,
-            body: normalizedBody,
+            body: JSON.stringify(completeMessageData),
             created_at: new Date(),
             updated_at: new Date()
           })
@@ -276,7 +447,35 @@ export default {
         throw error
       }
 
-      Logger.log('[DEBUG] Message successfully inserted into messages table.')
+      Logger.log('[DEBUG] Message successfully stored after permission and payment validation.')
+
+      // Handle post-storage processing (FCM delivery)
+      try {
+        if (shouldUseFCMDelivery(message.messageBox)) {
+          Logger.log('[DEBUG] Processing message for FCM delivery...')
+
+          // Send optimized FCM payload (only essential data for decryption)
+          const fcmPayload = {
+            title: 'New Message',
+            messageId: message.messageId
+          }
+
+          Logger.log(`[DEBUG] Sending FCM with complete message data for ${message.messageId}`)
+          Logger.log('FCM Payload:', JSON.stringify(fcmPayload, null, 2))
+
+          // Send FCM notification with complete message
+          const notificationResult = await sendFCMNotification(message.recipient, fcmPayload)
+
+          if (notificationResult.success) {
+            Logger.log('[DEBUG] FCM notification sent successfully')
+          } else {
+            Logger.log(`[DEBUG] FCM notification failed: ${notificationResult.error ?? 'Unknown error'}`)
+          }
+        }
+      } catch (deliveryError) {
+        // Log delivery errors but don't fail the message send (message is already stored)
+        Logger.error('[ERROR] Error processing FCM delivery:', deliveryError)
+      }
 
       return res.status(200).json({
         status: 'success',
