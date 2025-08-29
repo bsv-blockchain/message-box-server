@@ -59,7 +59,7 @@ export async function getRecipientFee(
   try {
     // Debug parameter types
     Logger.log(`[DEBUG] getRecipientFee params - recipient: ${typeof recipient} (${JSON.stringify(recipient)}), sender: ${typeof sender} (${JSON.stringify(sender)}), messageBox: ${typeof messageBox} (${JSON.stringify(messageBox)})`)
-    
+
     // First try sender-specific permission
     if (sender != null) {
       const senderSpecific = await knex('message_permissions')
@@ -119,7 +119,7 @@ function getSmartDefaultFee(messageBox: string): number {
   }
 
   // Other message boxes are always allowed by default
-  return -1
+  return 0
 }
 
 /**
