@@ -16,7 +16,18 @@
 import { Response } from 'express'
 import knexConfig from '../../knexfile.js'
 import * as knexLib from 'knex'
-import { AtomicBEEF, Base64String, BasketStringUnder300Bytes, BooleanDefaultTrue, DescriptionString5to50Bytes, Hash, LabelStringUnder300Bytes, OutputTagStringUnder300Bytes, P2PKH, PositiveIntegerOrZero, PrivateKey, PubKeyHex, PublicKey, Utils } from '@bsv/sdk'
+import {
+  AtomicBEEF,
+  Base64String,
+  BasketStringUnder300Bytes,
+  BooleanDefaultTrue,
+  DescriptionString5to50Bytes,
+  LabelStringUnder300Bytes,
+  OutputTagStringUnder300Bytes,
+  PositiveIntegerOrZero,
+  PubKeyHex,
+  PublicKey,
+} from '@bsv/sdk'
 import { Logger } from '../utils/logger.js'
 import { AuthRequest } from '@bsv/auth-express-middleware'
 import { sendFCMNotification } from '../utils/sendFCMNotification.js'
@@ -29,21 +40,23 @@ const { NODE_ENV = 'development', SERVER_PRIVATE_KEY } = process.env
 /**
  * Knex instance connected based on environment (development, production, or staging).
  */
-const knex: knexLib.Knex = (knexLib as any).default?.(
-  NODE_ENV === 'production' || NODE_ENV === 'staging'
-    ? knexConfig.production
-    : knexConfig.development
-) ?? (knexLib as any)(
-  NODE_ENV === 'production' || NODE_ENV === 'staging'
-    ? knexConfig.production
-    : knexConfig.development
-)
+const knex: knexLib.Knex =
+  (knexLib as any).default?.(
+    NODE_ENV === 'production' || NODE_ENV === 'staging'
+      ? knexConfig.production
+      : knexConfig.development
+  ) ??
+  (knexLib as any)(
+    NODE_ENV === 'production' || NODE_ENV === 'staging'
+      ? knexConfig.production
+      : knexConfig.development
+  )
 
 // Type definition for the incoming message format
 export interface Message {
-  recipient: PubKeyHex
+  recipient: PubKeyHex | PubKeyHex[] 
   messageBox: string
-  messageId: string
+  messageId: string | string[]          // one per recipient, same order as recipients
   body: string
 }
 
@@ -56,12 +69,17 @@ export interface Payment {
       derivationPrefix: Base64String
       derivationSuffix: Base64String
       senderIdentityKey: PubKeyHex
+      // NOTE: We intentionally do NOT type this strictly;
+      // some clients may include a JSON string here.
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore - custom extension
+      customInstructions?: unknown
     }
     insertionRemittance?: {
       basket: BasketStringUnder300Bytes
       customInstructions?: string
       tags?: OutputTagStringUnder300Bytes[]
-    } // No output description?
+    }
   }>
   description: DescriptionString5to50Bytes
   labels?: LabelStringUnder300Bytes[]
@@ -88,7 +106,6 @@ if (SERVER_PRIVATE_KEY == null || SERVER_PRIVATE_KEY.trim() === '') {
 export function calculateMessagePrice(message: string, priority: boolean = false): number {
   const basePrice = 2 // Base fee in satoshis
   const sizeFactor = Math.ceil(Buffer.byteLength(message, 'utf8') / 1024) * 3 // Satoshis per KB
-
   return basePrice + sizeFactor
 }
 
@@ -174,33 +191,12 @@ export default {
 
   /**
    * @function func
-   * @description
-   * Main request handler for sending a message to another user's MessageBox.
-   *
-   * Input:
-   * - `req.body.message`: The message object with recipient, box, ID, and body.
-   * - `req.auth.identityKey`: Authenticated user's identity key.
-   *
-   * Behavior:
-   * - Validates message structure and content.
-   * - Ensures recipient public key is valid.
-   * - Ensures the messageBox exists for the recipient, or creates it.
-   * - Inserts the message into the DB unless it's a duplicate.
-   *
-   * Output:
-   * - 200: Success response with messageId and confirmation.
-   * - 400: Structured validation error with reason code.
-   * - 500: Internal server error for unexpected failures.
-   *
-   * @param {SendMessageRequest} req - Authenticated request with the message to send
-   * @param {Response} res - Express response object
-   * @returns {Promise<Response>} JSON response
+   * @description Main handler for sending a message to another user's MessageBox.
    */
   func: async (req: SendMessageRequest, res: Response): Promise<Response> => {
     Logger.log('[DEBUG] Processing /sendMessage request...')
     Logger.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
-    // Logger.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2))
-
+    
     const senderKey = req.auth?.identityKey
     if (senderKey == null) {
       return res.status(401).json({
@@ -212,7 +208,9 @@ export default {
 
     try {
       const { message, payment } = req.body
-      // Validate presence and structure of the message
+      console.log('Received message send request from:', message, payment)
+
+      // Validate message
       if (message == null) {
         Logger.error('[ERROR] No message provided in request body!')
         return res.status(400).json({
@@ -222,25 +220,28 @@ export default {
         })
       }
 
-      // Validate message structure
-      if (message == null || typeof message !== 'object') {
-        return res.status(400).json({ status: 'error', code: 'ERR_INVALID_MESSAGE', description: 'Invalid message structure.' })
+      for (const id of message.messageId) {
+        if (typeof id !== 'string' || id.trim() === '') {
+          return res.status(400).json({
+            status: 'error',
+            code: 'ERR_INVALID_MESSAGEID',
+            description: 'Each messageId must be a non-empty string.'
+          })
+        }
       }
-      if (typeof message.recipient !== 'string' || message.recipient.trim() === '') {
-        return res.status(400).json({ status: 'error', code: 'ERR_INVALID_RECIPIENT', description: 'Invalid recipient.' })
-      }
+
       if (typeof message.messageBox !== 'string' || message.messageBox.trim() === '') {
-        return res.status(400).json({ status: 'error', code: 'ERR_INVALID_MESSAGEBOX', description: 'Invalid message box.' })
+        return res.status(400).json({
+          status: 'error',
+          code: 'ERR_INVALID_MESSAGEBOX',
+          description: 'Invalid message box.'
+        })
       }
-      if (typeof message.messageId !== 'string' || message.messageId.trim() === '') {
-        return res.status(400).json({ status: 'error', code: 'ERR_INVALID_MESSAGEID', description: 'Invalid message ID.' })
-      }
+
       if (
-        (typeof message.body !== 'string' &&
-          (typeof message.body !== 'object' || message.body === null)) ||
+        (typeof message.body !== 'string' && (typeof message.body !== 'object' || message.body === null)) ||
         (typeof message.body === 'string' && message.body.trim() === '')
       ) {
-        console.error('[ERROR] Invalid message body:', message.body)
         return res.status(400).json({
           status: 'error',
           code: 'ERR_INVALID_MESSAGE_BODY',
@@ -248,242 +249,279 @@ export default {
         })
       }
 
-      // Confirm the recipient key is a valid public key
-      Logger.log('[DEBUG] Validating recipient key:', message.recipient)
-      try {
-        PublicKey.fromString(message.recipient)
-        Logger.log('[DEBUG] Parsed Recipient Public Key Successfully:', message.recipient)
-      } catch (error) {
-        return res.status(400).json({ status: 'error', code: 'ERR_INVALID_RECIPIENT_KEY', description: 'Invalid recipient key format.' })
+      // Validate recipient keys & build map(recipient -> messageId)
+      const recipients = message.recipients.map(r => String(r).trim())
+      const msgIdByRecipient = new Map<string, string>()
+
+      for (let i = 0; i < recipients.length; i++) {
+        const r = recipients[i]
+        try {
+          PublicKey.fromString(r)
+        } catch {
+          return res.status(400).json({
+            status: 'error',
+            code: 'ERR_INVALID_RECIPIENT_KEY',
+            description: `Invalid recipient key: ${r}`
+          })
+        }
+        msgIdByRecipient.set(r, message.messageId[i])
       }
 
-      Logger.log(`[DEBUG] Storing message for recipient: ${message.recipient}`)
+      // Ensure messageBox exists for each recipient
+      const boxType = message.messageBox.trim()
+      for (const r of recipients) {
+        const existing = await knex('messageBox').where({ identityKey: r, type: boxType }).first()
+        if (!existing) {
+          await knex('messageBox').insert({
+            identityKey: r, type: boxType, created_at: new Date(), updated_at: new Date()
+          })
+        }
+      }
 
-      // Retrieve or create the messageBox for the recipient
-      let messageBox = await knex('messageBox')
-        .where({ identityKey: message.recipient, type: message.messageBox })
-        .first()
+      // ---------- Fee evaluation ----------
+      const deliveryFeeOnce = await getServerDeliveryFee(boxType)
 
-      if (messageBox == null) {
-        Logger.log('[DEBUG] MessageBox not found, creating a new one...')
-        await knex('messageBox').insert({
-          identityKey: message.recipient,
-          type: message.messageBox,
-          created_at: new Date(),
-          updated_at: new Date()
+      type FeeRow = { recipient: string; recipientFee: number; allowed: boolean; blockedReason?: string }
+      const feeRows: FeeRow[] = []
+      for (const r of recipients) {
+        const rf = await getRecipientFee(r, senderKey, boxType) // -1 = blocked; 0 = allow; >0 = sats required
+        if (rf === -1) feeRows.push({ recipient: r, recipientFee: rf, allowed: false, blockedReason: `Messages to ${r} are blocked` })
+        else feeRows.push({ recipient: r, recipientFee: rf, allowed: true })
+      }
+
+      // Blocked recipients short-circuit
+      const blocked = feeRows.filter(f => !f.allowed).map(f => f.recipient)
+      if (blocked.length) {
+        return res.status(403).json({
+          status: 'error',
+          code: 'ERR_DELIVERY_BLOCKED',
+          description: `Blocked recipients: ${blocked.join(', ')}`,
+          blockedRecipients: blocked
         })
       }
 
-      // Re-fetch to get messageBoxId
-      messageBox = await knex('messageBox')
-        .where({ identityKey: message.recipient, type: message.messageBox })
-        .select('messageBoxId')
-        .first()
+      const anyRecipientFee = feeRows.some(f => f.recipientFee > 0)
+      const requiresPayment = (deliveryFeeOnce > 0) || anyRecipientFee
 
-      let recipientPaymentData: any = undefined
+      // ---------- Payment internalization (batch) ----------
+      // RULE: if deliveryFeeOnce > 0 then payment.outputs[0] MUST be the server delivery output
+      const perRecipientOutputs = new Map<string, any[]>()
 
-      try {
-        // if (payment?.outputs != null) {
-        //   paymentAmount = payment.outputs.reduce((acc, output) => acc + output.amount, 0)
-        // }
-
-        Logger.log(`[DEBUG] Checking permissions for ${senderKey} -> ${message.recipient} (${message.messageBox})`)
-
-        // Calculate fees and check permissions (this will auto-create box-wide defaults)
-        const deliveryFee = await getServerDeliveryFee(message.messageBox)
-        const recipientFee = await getRecipientFee(message.recipient, senderKey, message.messageBox)
-
-        // Determine if this is allowed based on fees and payment provided
-        // Recipient fee standard: -1 = block all, 0 = always allow, >0 = payment required
-        let allowed = true
-        let requiresPayment = false
-        let blockedReason: string | undefined
-        let totalRequired = deliveryFee // Start with delivery fee
-
-        if (recipientFee === -1) {
-          // Block all messages
-          allowed = false
-          blockedReason = `Messages to ${message.recipient} are blocked`
-        } else if (recipientFee === 0) {
-          // Always allow, no recipient fee required
-          allowed = true
-          requiresPayment = deliveryFee > 0 // Only delivery fee if any
-        } else if (recipientFee > 0) {
-          // Payment required (recipient fee + delivery fee)
-          allowed = true
-          requiresPayment = true
-          totalRequired = deliveryFee + recipientFee
-        }
-
-        // Create fee result object for downstream logic
-        const feeResult = {
-          allowed,
-          requires_payment: requiresPayment,
-          blocked_reason: blockedReason,
-          delivery_fee: deliveryFee,
-          recipient_fee: recipientFee,
-          total_cost: totalRequired
-        }
-
-        if (!feeResult.allowed) {
-          Logger.log(`[DEBUG] Message delivery blocked: ${feeResult.blocked_reason}`)
-          return res.status(403).json({
+      if (requiresPayment) {
+        if (!payment?.tx || !Array.isArray(payment.outputs)) {
+          return res.status(400).json({
             status: 'error',
-            code: 'ERR_DELIVERY_BLOCKED',
-            description: feeResult.blocked_reason ?? 'Message delivery not allowed',
-            feeInfo: {
-              deliveryFee: feeResult.delivery_fee,
-              recipientFee: feeResult.recipient_fee,
-              totalRequired: feeResult.total_cost
-            }
+            code: 'ERR_MISSING_PAYMENT_TX',
+            description: 'Payment transaction data is required for payable delivery.'
           })
         }
 
-        // Handle payment validation and internalization BEFORE storing message
-        if (feeResult.requires_payment) {
-          Logger.log(`[DEBUG] Processing payment of ${feeResult.total_cost} satoshis (delivery: ${feeResult.delivery_fee}, recipient: ${feeResult.recipient_fee})`)
-
-          if (payment?.tx == null) {
+        // Enforce: index 0 is server delivery output (when needed)
+        if (deliveryFeeOnce > 0) {
+          if (payment.outputs.length === 0) {
             return res.status(400).json({
               status: 'error',
-              code: 'ERR_MISSING_PAYMENT_TX',
-              description: 'Payment transaction data is required'
+              code: 'ERR_MISSING_DELIVERY_OUTPUT',
+              description: 'Delivery fee required but no outputs were provided.'
+            })
+          }
+          const serverDeliveryOutput = payment.outputs[0]
+          try {
+            const wallet = await getWallet()
+            const internalizeResult = await wallet.internalizeAction({
+              tx: payment.tx,
+              outputs: [serverDeliveryOutput],
+              description: payment.description ?? 'MessageBox delivery payment (batch)'
+            })
+            if (!internalizeResult.accepted) {
+              return res.status(400).json({
+                status: 'error',
+                code: 'ERR_INSUFFICIENT_PAYMENT',
+                description: 'Payment was not accepted by the server.'
+              })
+            }
+            Logger.log('[DEBUG] Internalized server delivery output at index 0')
+          } catch (error) {
+            Logger.error('[ERROR] Failed to internalize delivery fee payment:', error)
+            return res.status(500).json({
+              status: 'error',
+              code: 'ERR_INTERNALIZE_FAILED',
+              description: `Failed to internalize payment: ${error instanceof Error ? error.message : 'Unknown error'}`
+            })
+          }
+        }
+
+        // ---------- Build per-recipient outputs ----------
+        // Use ONLY outputs[1..] if a server delivery fee exists, otherwise use all.
+        const recipientSideOutputs = payment.outputs.slice(deliveryFeeOnce > 0 ? 1 : 0)
+        console.log('Recipient side outputs:', recipientSideOutputs)
+        console.log('All outputs: ', payment.outputs)
+
+        const feeRecipients = feeRows.filter(f => f.recipientFee > 0).map(f => f.recipient)
+
+        // Try explicit mapping via customInstructions (in insertionRemittance OR paymentRemittance)
+        const outputsByRecipientKey = new Map<string, any[]>()
+        const usedIndexes = new Set<number>()
+
+        for (const out of recipientSideOutputs) {
+          const raw =
+            (out as any)?.insertionRemittance?.customInstructions ??
+            (out as any)?.paymentRemittance?.customInstructions ??
+            (out as any)?.customInstructions
+
+          if (!raw) continue
+
+          try {
+            const instr = typeof raw === 'string' ? JSON.parse(raw) : raw
+            const key = instr?.recipientIdentityKey
+            if (typeof key === 'string' && key.trim() !== '') {
+              if (!outputsByRecipientKey.has(key)) outputsByRecipientKey.set(key, [])
+              outputsByRecipientKey.get(key)!.push(out)
+              if (typeof (out as any)?.outputIndex === 'number') {
+                usedIndexes.add((out as any).outputIndex)
+              }
+            }
+          } catch {
+            // ignore unparsable instructions
+          }
+        }
+
+        if (outputsByRecipientKey.size === 0) {
+          // No explicit tags: fallback to positional mapping for recipients that require a fee
+          if (recipientSideOutputs.length < feeRecipients.length) {
+            return res.status(400).json({
+              status: 'error',
+              code: 'ERR_INSUFFICIENT_OUTPUTS',
+              description: `Expected at least ${feeRecipients.length} recipient output(s) but received ${recipientSideOutputs.length}`
             })
           }
 
-          // Separate delivery fee outputs from recipient fee outputs based on actual fee structure
-          const deliveryOutputsToInternalize = []
-          let recipientOutputStartIndex = 0
-
-          // If there's a delivery fee, the first output(s) are for delivery
-          if (feeResult.delivery_fee > 0) {
-            deliveryOutputsToInternalize.push(payment.outputs[0])
-            recipientOutputStartIndex = 1 // Recipient outputs start at index 1
-          }
-          // If no delivery fee, all outputs are for the recipient (start at index 0)
-
-          // Internalize delivery fee for the server if present
-          if (deliveryOutputsToInternalize.length > 0) {
-            try {
-              const wallet = await getWallet()
-              const internalizeResult = await wallet.internalizeAction({
-                tx: payment.tx,
-                outputs: deliveryOutputsToInternalize,
-                description: payment.description ?? 'MessageBox delivery payment'
-              })
-
-              if (!internalizeResult.accepted) {
-                return res.status(400).json({
-                  status: 'error',
-                  code: 'ERR_INSUFFICIENT_PAYMENT',
-                  description: 'Payment was not accepted! Contact the server host for more information.'
-                })
-              }
-
-              Logger.log('[DEBUG] Server delivery fee payment internalized successfully')
-            } catch (error) {
-              Logger.error('[ERROR] Failed to internalize delivery fee payment:', error)
-              return res.status(500).json({
-                status: 'error',
-                code: 'ERR_INTERNALIZE_FAILED',
-                description: `Failed to internalize payment: ${error instanceof Error ? error.message : 'Unknown error'}`
-              })
-            }
-          }
-
-          // Prepare recipient payment data for storage
-          if (feeResult.recipient_fee > 0 && payment.outputs.length > recipientOutputStartIndex) {
-            const recipientOutputs = payment.outputs.slice(recipientOutputStartIndex)
-
-            recipientPaymentData = {
-              ...payment,
-              outputs: recipientOutputs
-            }
-            Logger.log(`[DEBUG] Prepared ${recipientOutputs.length} recipient fee output(s) for storage (starting from index ${recipientOutputStartIndex})`)
-          } else if (feeResult.recipient_fee > 0) {
-            Logger.log('[DEBUG] Recipient fee required but no recipient outputs found in payment data')
-          } else {
-            Logger.log('[DEBUG] No recipient fee required')
-          }
-        }
-      } catch (permissionError) {
-        Logger.error('[ERROR] Error checking message permissions:', permissionError)
-        return res.status(500).json({
-          status: 'error',
-          code: 'ERR_PERMISSION_CHECK_FAILED',
-          description: 'Failed to check message permissions'
-        })
-      }
-
-      // Permission check passed - now store the message
-      Logger.log('[DEBUG] Inserting message into messages table...')
-      try {
-        const messageBoxId = messageBox?.messageBoxId ?? null
-
-        // Store the complete request body (including recipient payment data) as a JSON string
-        // This allows recipients to access payment information when listing messages
-        // Only recipient fee payments are stored - delivery fees are already processed by the server
-        const completeMessageData = {
-          message: message.body,
-          ...(recipientPaymentData != null && { payment: recipientPaymentData })
-        }
-
-        await knex('messages')
-          .insert({
-            messageId: message.messageId,
-            messageBoxId,
-            sender: req.auth?.identityKey,
-            recipient: message.recipient,
-            body: JSON.stringify(completeMessageData),
-            created_at: new Date(),
-            updated_at: new Date()
+          feeRecipients.forEach((r, idx) => {
+            const out = recipientSideOutputs[idx]
+            if (!perRecipientOutputs.has(r)) perRecipientOutputs.set(r, [])
+            perRecipientOutputs.get(r)!.push(out)
           })
-          .onConflict('messageId')
-          .ignore()
-      } catch (error) {
-        if ((error as any).code === 'ER_DUP_ENTRY') {
-          return res.status(400).json({ status: 'error', code: 'ERR_DUPLICATE_MESSAGE', description: 'Duplicate message.' })
-        }
-        throw error
-      }
-
-      Logger.log('[DEBUG] Message successfully stored after permission and payment validation.')
-
-      // Handle post-storage processing (FCM delivery)
-      try {
-        if (shouldUseFCMDelivery(message.messageBox)) {
-          Logger.log('[DEBUG] Processing message for FCM delivery...')
-
-          // Send optimized FCM payload (only essential data for decryption)
-          const fcmPayload = {
-            title: 'New Message',
-            messageId: message.messageId
+        } else {
+          // Use tagged outputs where present
+          for (const r of feeRecipients) {
+            const tagged = outputsByRecipientKey.get(r) ?? []
+            if (tagged.length > 0) {
+              perRecipientOutputs.set(r, tagged)
+            }
           }
 
-          Logger.log(`[DEBUG] Sending FCM with complete message data for ${message.messageId}`)
-          Logger.log('FCM Payload:', JSON.stringify(fcmPayload, null, 2))
+          // For any remaining fee recipients without tags, allocate unused outputs (positional)
+          const unmapped = feeRecipients.filter(r => !perRecipientOutputs.has(r))
+          if (unmapped.length > 0) {
+            const remaining = recipientSideOutputs.filter(o => {
+              const idx = (o as any)?.outputIndex
+              return typeof idx === 'number' ? !usedIndexes.has(idx) : true
+            })
 
-          // Send FCM notification with complete message
-          const notificationResult = await sendFCMNotification(message.recipient, fcmPayload)
+            if (remaining.length < unmapped.length) {
+              return res.status(400).json({
+                status: 'error',
+                code: 'ERR_INSUFFICIENT_OUTPUTS',
+                description: `Expected at least ${unmapped.length} additional recipient output(s) but only ${remaining.length} remain`
+              })
+            }
 
-          if (notificationResult.success) {
-            Logger.log('[DEBUG] FCM notification sent successfully')
-          } else {
-            Logger.log(`[DEBUG] FCM notification failed: ${notificationResult.error ?? 'Unknown error'}`)
+            unmapped.forEach((r, i) => {
+              const out = remaining[i]
+              if (!perRecipientOutputs.has(r)) perRecipientOutputs.set(r, [])
+              perRecipientOutputs.get(r)!.push(out)
+            })
+          }
+
+          // Final safety check
+          for (const r of feeRecipients) {
+            if (!perRecipientOutputs.has(r) || perRecipientOutputs.get(r)!.length === 0) {
+              return res.status(400).json({
+                status: 'error',
+                code: 'ERR_MISSING_RECIPIENT_OUTPUTS',
+                description: `Recipient fee required but no outputs were provided for ${r}`
+              })
+            }
           }
         }
-      } catch (deliveryError) {
-        // Log delivery errors but don't fail the message send (message is already stored)
-        Logger.error('[ERROR] Error processing FCM delivery:', deliveryError)
       }
+
+      // ---------- Store messages (one per recipient) ----------
+      const results: Array<{ recipient: string; messageId: string }> = []
+      for (const { recipient: r } of feeRows) {
+        const mb = await knex('messageBox')
+          .where({ identityKey: r, type: boxType })
+          .select('messageBoxId')
+          .first()
+
+        // Use the caller-provided per-recipient messageId
+        const perRecipientMessageId = msgIdByRecipient.get(r)!
+        if (!perRecipientMessageId) {
+          return res.status(400).json({
+            status: 'error',
+            code: 'ERR_INVALID_MESSAGEID',
+            description: `Missing messageId for recipient ${r}`
+          })
+        }
+
+        const perRecipientPayment =
+          perRecipientOutputs.has(r) && req.body.payment
+            ? { ...req.body.payment, outputs: perRecipientOutputs.get(r)! }
+            : undefined
+
+        const storedBody = {
+          message: message.body,
+          ...(perRecipientPayment && { payment: perRecipientPayment })
+        }
+
+        try {
+          await knex('messages')
+            .insert({
+              messageId: perRecipientMessageId,
+              messageBoxId: mb?.messageBoxId ?? null,
+              sender: senderKey,
+              recipient: r,
+              body: JSON.stringify(storedBody),
+              created_at: new Date(),
+              updated_at: new Date()
+            })
+            .onConflict('messageId')
+            .ignore()
+
+          results.push({ recipient: r, messageId: perRecipientMessageId })
+        } catch (error: any) {
+          if (error?.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({
+              status: 'error',
+              code: 'ERR_DUPLICATE_MESSAGE',
+              description: 'Duplicate message.'
+            })
+          }
+          throw error
+        }
+
+        // Optional push delivery (FCM), non-fatal on error
+        try {
+          if (shouldUseFCMDelivery(boxType)) {
+            await sendFCMNotification(r, { title: 'New Message', messageId: perRecipientMessageId })
+          }
+        } catch (deliveryError) {
+          Logger.error('[ERROR] Error processing FCM delivery:', deliveryError)
+        }
+      }
+
       return res.status(200).json({
         status: 'success',
-        messageId: message.messageId,
-        message: `Your message has been sent to ${message.recipient}`
+        message: `Your message has been sent to ${results.length} recipient(s).`,
+        results
       })
     } catch (error) {
       Logger.error('[ERROR] Internal Server Error:', error)
-      return res.status(500).json({ status: 'error', code: 'ERR_INTERNAL', description: 'An internal error has occurred.' })
+      return res.status(500).json({
+        status: 'error',
+        code: 'ERR_INTERNAL',
+        description: 'An internal error has occurred.'
+      })
     }
   }
 }
