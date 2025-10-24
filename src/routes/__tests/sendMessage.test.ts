@@ -133,7 +133,7 @@ describe('sendMessage', () => {
 
   it('Throws an error if recipient is missing', async () => {
     if (validReq.body.message !== null && validReq.body.message !== undefined) {
-      validReq.body.message.recipients = undefined as unknown as string[]
+      validReq.body.message.recipient = undefined as unknown as string
     }
 
     await sendMessage.func(validReq, mockRes as Response)
@@ -147,7 +147,7 @@ describe('sendMessage', () => {
 
   it('Throws an error if recipient is not a string', async () => {
     if (validReq.body.message !== null && validReq.body.message !== undefined) {
-      validReq.body.message.recipients = 123 as unknown as string[]
+      validReq.body.message.recipient = 123 as unknown as string
     }
 
     await sendMessage.func(validReq, mockRes as Response)
@@ -264,7 +264,7 @@ describe('sendMessage', () => {
 
   it('Returns error if messageId is missing', async () => {
     if (validReq.body.message !== undefined && validReq.body.message !== null) {
-      validReq.body.message.messageId = undefined as unknown as string[]
+      validReq.body.message.messageId = undefined as unknown as string
     }
 
     await sendMessage.func(validReq, mockRes as Response)

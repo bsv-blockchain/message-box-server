@@ -54,9 +54,11 @@ const knex: knexLib.Knex =
 
 // Type definition for the incoming message format
 export interface Message {
-  recipient: PubKeyHex | PubKeyHex[] 
+  // Back-compat: accept 'recipient' (string or array) AND new 'recipients' (array)
+  recipient: PubKeyHex | PubKeyHex[]
+  recipients?: PubKeyHex[]
   messageBox: string
-  messageId: string | string[]          // one per recipient, same order as recipients
+  messageId: string | string[] // one per recipient, same order as recipients
   body: string
 }
 
@@ -86,7 +88,6 @@ export interface Payment {
   seekPermission?: BooleanDefaultTrue
 }
 
-// Extended Express request type with authentication
 export interface SendMessageRequest extends AuthRequest {
   body: {
     message?: Message
@@ -189,14 +190,10 @@ export default {
   },
   exampleResponse: { status: 'success' },
 
-  /**
-   * @function func
-   * @description Main handler for sending a message to another user's MessageBox.
-   */
   func: async (req: SendMessageRequest, res: Response): Promise<Response> => {
     Logger.log('[DEBUG] Processing /sendMessage request...')
     Logger.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
-    
+
     const senderKey = req.auth?.identityKey
     if (senderKey == null) {
       return res.status(401).json({
@@ -210,7 +207,6 @@ export default {
       const { message, payment } = req.body
       console.log('Received message send request from:', message, payment)
 
-      // Validate message
       if (message == null) {
         Logger.error('[ERROR] No message provided in request body!')
         return res.status(400).json({
@@ -220,41 +216,72 @@ export default {
         })
       }
 
-      for (const id of message.messageId) {
-        if (typeof id !== 'string' || id.trim() === '') {
-          return res.status(400).json({
-            status: 'error',
-            code: 'ERR_INVALID_MESSAGEID',
-            description: 'Each messageId must be a non-empty string.'
-          })
-        }
-      }
-
       if (typeof message.messageBox !== 'string' || message.messageBox.trim() === '') {
-        return res.status(400).json({
-          status: 'error',
-          code: 'ERR_INVALID_MESSAGEBOX',
-          description: 'Invalid message box.'
-        })
+        return res.status(400).json({ status: 'error', code: 'ERR_INVALID_MESSAGEBOX', description: 'Invalid message box.' })
       }
 
       if (
         (typeof message.body !== 'string' && (typeof message.body !== 'object' || message.body === null)) ||
         (typeof message.body === 'string' && message.body.trim() === '')
       ) {
+        return res.status(400).json({ status: 'error', code: 'ERR_INVALID_MESSAGE_BODY', description: 'Invalid message body.' })
+      }
+
+      // ---------- Back-compat normalization ----------
+      // Accept message.recipients (array) or message.recipient (string|array)
+      const recipientsRaw = (message as any).recipients ?? (message as any).recipient
+      if (recipientsRaw == null) {
         return res.status(400).json({
           status: 'error',
-          code: 'ERR_INVALID_MESSAGE_BODY',
-          description: 'Invalid message body.'
+          code: 'ERR_RECIPIENT_REQUIRED',
+          description: 'Missing recipient(s). Provide "recipient" or "recipients".'
+        })
+      }
+      const recipients: string[] = Array.isArray(recipientsRaw)
+        ? recipientsRaw
+        : [recipientsRaw]
+
+      const messageIdRaw = message.messageId
+      if (messageIdRaw == null) {
+        return res.status(400).json({
+          status: 'error',
+          code: 'ERR_MESSAGEID_REQUIRED',
+          description: 'Missing messageId.'
+        })
+      }
+      const messageIds: string[] = Array.isArray(messageIdRaw)
+        ? messageIdRaw
+        : [messageIdRaw]
+
+      // If multiple recipients but only one messageId provided, fail clearly (avoid accidental reuse)
+      if (recipients.length > 1 && messageIds.length === 1) {
+        return res.status(400).json({
+          status: 'error',
+          code: 'ERR_MESSAGEID_COUNT_MISMATCH',
+          description: `Provided 1 messageId for ${recipients.length} recipients. Provide one messageId per recipient (same order).`
+        })
+      }
+      if (messageIds.length !== recipients.length) {
+        return res.status(400).json({
+          status: 'error',
+          code: 'ERR_MESSAGEID_COUNT_MISMATCH',
+          description: `Recipients (${recipients.length}) and messageId count (${messageIds.length}) must match.`
         })
       }
 
+      // Validate each messageId
+      for (const id of messageIds) {
+        if (typeof id !== 'string' || id.trim() === '') {
+          return res.status(400).json({ status: 'error', code: 'ERR_INVALID_MESSAGEID', description: 'Each messageId must be a non-empty string.' })
+        }
+      }
+
       // Validate recipient keys & build map(recipient -> messageId)
-      const recipients = message.recipients.map(r => String(r).trim())
+      const recipientsTrimmed = recipients.map(r => String(r).trim())
       const msgIdByRecipient = new Map<string, string>()
 
-      for (let i = 0; i < recipients.length; i++) {
-        const r = recipients[i]
+      for (let i = 0; i < recipientsTrimmed.length; i++) {
+        const r = recipientsTrimmed[i]
         try {
           PublicKey.fromString(r)
         } catch {
@@ -264,12 +291,12 @@ export default {
             description: `Invalid recipient key: ${r}`
           })
         }
-        msgIdByRecipient.set(r, message.messageId[i])
+        msgIdByRecipient.set(r, messageIds[i])
       }
 
       // Ensure messageBox exists for each recipient
       const boxType = message.messageBox.trim()
-      for (const r of recipients) {
+      for (const r of recipientsTrimmed) {
         const existing = await knex('messageBox').where({ identityKey: r, type: boxType }).first()
         if (!existing) {
           await knex('messageBox').insert({
@@ -283,7 +310,7 @@ export default {
 
       type FeeRow = { recipient: string; recipientFee: number; allowed: boolean; blockedReason?: string }
       const feeRows: FeeRow[] = []
-      for (const r of recipients) {
+      for (const r of recipientsTrimmed) {
         const rf = await getRecipientFee(r, senderKey, boxType) // -1 = blocked; 0 = allow; >0 = sats required
         if (rf === -1) feeRows.push({ recipient: r, recipientFee: rf, allowed: false, blockedReason: `Messages to ${r} are blocked` })
         else feeRows.push({ recipient: r, recipientFee: rf, allowed: true })
@@ -304,7 +331,6 @@ export default {
       const requiresPayment = (deliveryFeeOnce > 0) || anyRecipientFee
 
       // ---------- Payment internalization (batch) ----------
-      // RULE: if deliveryFeeOnce > 0 then payment.outputs[0] MUST be the server delivery output
       const perRecipientOutputs = new Map<string, any[]>()
 
       if (requiresPayment) {
@@ -352,7 +378,6 @@ export default {
         }
 
         // ---------- Build per-recipient outputs ----------
-        // Use ONLY outputs[1..] if a server delivery fee exists, otherwise use all.
         const recipientSideOutputs = payment.outputs.slice(deliveryFeeOnce > 0 ? 1 : 0)
         console.log('Recipient side outputs:', recipientSideOutputs)
         console.log('All outputs: ', payment.outputs)
@@ -454,7 +479,6 @@ export default {
           .select('messageBoxId')
           .first()
 
-        // Use the caller-provided per-recipient messageId
         const perRecipientMessageId = msgIdByRecipient.get(r)!
         if (!perRecipientMessageId) {
           return res.status(400).json({
@@ -500,7 +524,6 @@ export default {
           throw error
         }
 
-        // Optional push delivery (FCM), non-fatal on error
         try {
           if (shouldUseFCMDelivery(boxType)) {
             await sendFCMNotification(r, { title: 'New Message', messageId: perRecipientMessageId })
