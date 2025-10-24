@@ -199,7 +199,7 @@ export default {
   func: async (req: SendMessageRequest, res: Response): Promise<Response> => {
     Logger.log('[DEBUG] Processing /sendMessage request...')
     Logger.log('[DEBUG] Request Headers:', JSON.stringify(req.headers, null, 2))
-    Logger.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2))
+    // Logger.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2))
 
     const senderKey = req.auth?.identityKey
     if (senderKey == null) {
@@ -476,7 +476,6 @@ export default {
         // Log delivery errors but don't fail the message send (message is already stored)
         Logger.error('[ERROR] Error processing FCM delivery:', deliveryError)
       }
-
       return res.status(200).json({
         status: 'success',
         messageId: message.messageId,

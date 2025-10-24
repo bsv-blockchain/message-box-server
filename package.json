@@ -61,7 +61,7 @@
     "@bsv/auth-express-middleware": "^1.2.3",
     "@bsv/authsocket": "^1.0.7",
     "@bsv/payment-express-middleware": "^1.2.3",
-    "@bsv/sdk": "^1.6.24",
+    "@bsv/sdk": "^1.8.8",
     "@bsv/wallet-toolbox": "^1.6.4",
     "body-parser": "^1.20.3",
     "dotenv": "^8.6.0",
