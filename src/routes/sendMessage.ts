@@ -32,7 +32,6 @@ import { Logger } from '../utils/logger.js'
 import { AuthRequest } from '@bsv/auth-express-middleware'
 import { sendFCMNotification } from '../utils/sendFCMNotification.js'
 import { getRecipientFee, getServerDeliveryFee, shouldUseFCMDelivery } from '../utils/messagePermissions.js'
-import { getWallet } from '../app.js'
 
 // Determine the environment (default to development)
 const { NODE_ENV = 'development', SERVER_PRIVATE_KEY } = process.env
@@ -353,6 +352,7 @@ export default {
           }
           const serverDeliveryOutput = payment.outputs[0]
           try {
+            const { getWallet } = await import('../app.js')
             const wallet = await getWallet()
             const internalizeResult = await wallet.internalizeAction({
               tx: payment.tx,

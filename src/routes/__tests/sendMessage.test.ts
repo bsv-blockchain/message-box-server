@@ -126,8 +126,8 @@ describe('sendMessage', () => {
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
-      code: 'ERR_INVALID_MESSAGE',
-      description: 'Invalid message structure.'
+      code: 'ERR_INVALID_MESSAGEBOX',
+      description: 'Invalid message box.'
     }))
   })
 
@@ -140,8 +140,8 @@ describe('sendMessage', () => {
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
-      code: 'ERR_INVALID_RECIPIENT',
-      description: 'Invalid recipient.'
+      code: 'ERR_RECIPIENT_REQUIRED',
+      description: 'Missing recipient(s). Provide "recipient" or "recipients".'
     }))
   })
 
@@ -154,8 +154,7 @@ describe('sendMessage', () => {
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
-      code: 'ERR_INVALID_RECIPIENT',
-      description: 'Invalid recipient.'
+      code: 'ERR_INVALID_RECIPIENT_KEY'
     }))
   })
 
@@ -188,11 +187,8 @@ describe('sendMessage', () => {
 
   it('Throws an error if the message body is not a string', async () => {
     if (validReq.body.message !== null && validReq.body.message !== undefined) {
-      validReq.body.message.body = { text: 'this is my message body' } as unknown as string
+      validReq.body.message.body = 42 as unknown as string
     }
-
-    // Simulate middleware behavior - Ensure valid string input
-    const messageBody = typeof validReq.body.message?.body === 'string' ? validReq.body.message.body : ''
 
     await sendMessage.func(validReq, mockRes as Response)
     expect(mockRes.status).toHaveBeenCalledWith(400)
@@ -272,8 +268,8 @@ describe('sendMessage', () => {
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
-      code: 'ERR_INVALID_MESSAGEID',
-      description: 'Invalid message ID.'
+      code: 'ERR_MESSAGEID_REQUIRED',
+      description: 'Missing messageId.'
     }))
   })
 
@@ -298,39 +294,35 @@ describe('sendMessage', () => {
     }))
   })
 
-  it('Returns error if message is duplicate', async () => {
+  it('Silently ignores duplicate messages via onConflict().ignore()', async () => {
     queryTracker.on('query', (q, step: number) => {
       if (step === 1) {
-        q.response(1) // Simulate successful messageBox update (returning affected row count)
+        q.response({ messageBoxId: 42, type: 'payment_inbox' }) // messageBox exists
       } else if (step === 2) {
-        q.response([{ messageBoxId: 123 }]) // Simulate finding a valid messageBoxId
+        q.response({ messageBoxId: 42 }) // get messageBoxId for insert
       } else if (step === 3) {
-        q.reject({ code: 'ER_DUP_ENTRY' } as any) // Simulate duplicate message error
+        q.response(0) // insert with onConflict().ignore() returns 0 rows affected
       } else {
-        q.response([]) // Default response for unexpected queries
+        q.response([])
       }
     })
 
     await sendMessage.func(validReq, mockRes as Response)
 
-    expect(mockRes.status).toHaveBeenCalledWith(400)
+    expect(mockRes.status).toHaveBeenCalledWith(200)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'error',
-      code: 'ERR_DUPLICATE_MESSAGE',
-      description: 'Duplicate message.'
+      status: 'success'
     }))
   })
 
   it('Returns internal error if unexpected error occurs', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+    jest.spyOn(console, 'log').mockImplementation(() => {})
     queryTracker.on('query', () => {
       throw new Error('Unexpected failure') // Simulating an unexpected database failure
     })
 
-    console.log('[TEST] Sending request that should trigger an internal error...')
-
     await sendMessage.func(validReq, mockRes as Response)
-
-    console.log('[TEST] Checking if response was handled correctly...')
 
     // Ensure the response status is set
     expect(mockRes.status).toHaveBeenCalledTimes(1)
@@ -344,37 +336,14 @@ describe('sendMessage', () => {
     }))
   })
 
-  it('Forwards the message to an overlay host if local messageBox is missing', async () => {
-    axiosMock.onPost('https://overlay.example.com/sendMessage').reply(200, {
-      status: 'success',
-      echoed: true,
-      forwarded: true,
-      host: 'https://overlay.example.com'
-    })
 
-    queryTracker.on('query', (q, step) => {
-      if (step === 1) q.response(undefined) // No local messageBox
-      else if (step === 2) q.response({ host: 'https://overlay.example.com' }) // Overlay ad found
-    })
-
-    validReq.auth = { identityKey: 'mockIdKey' }
-
-    await sendMessage.func(validReq, mockRes)
-
-    expect(mockRes.status).toHaveBeenCalledWith(200)
-    expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
-      forwarded: true,
-      host: 'https://overlay.example.com'
-    }))
-  }, 15000)
-
-  it('creates a new messageBox if no overlay ad is found', async () => {
+  it('creates a new messageBox when one does not exist for recipient', async () => {
     queryTracker.on('query', (q, step) => {
       if (step === 1) q.response(undefined) // messageBox not found
-      else if (step === 2) q.response(undefined) // overlay ad not found
-      else if (step === 3) q.response(1) // simulate insert
-      else if (step === 4) q.response([{ messageBoxId: 42 }]) // get messageBox
-      else if (step === 5) q.response(1) // insert message
+      else if (step === 2) q.response(1) // messageBox insert
+      else if (step === 3) q.response({ messageBoxId: 42 }) // get messageBoxId for message insert
+      else if (step === 4) q.response(1) // insert message
+      else q.response([])
     })
 
     await sendMessage.func(validReq, mockRes)

@@ -7,7 +7,7 @@ const connectionConfig = process.env.KNEX_DB_CONNECTION != null && process.env.K
   : undefined
 
 const config: Knex.Config = {
-  client: 'mysql2',
+  client: process.env.KNEX_DB_CLIENT ?? 'mysql2',
   connection: connectionConfig,
   useNullAsDefault: true,
   migrations: {

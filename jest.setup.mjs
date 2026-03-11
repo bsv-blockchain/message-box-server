@@ -14,5 +14,5 @@ global.afterAll = afterAll;
 // Add mock environment variables needed for tests
 process.env.SERVER_PRIVATE_KEY = 'test_private_key_for_jest_environment';
 process.env.NODE_ENV = 'test';
-process.env.KNEX_DB_CLIENT = 'sqlite3';
+process.env.KNEX_DB_CLIENT = 'better-sqlite3';
 process.env.KNEX_DB_CONNECTION = '{"filename":":memory:"}';

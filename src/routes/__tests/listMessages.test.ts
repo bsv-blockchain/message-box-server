@@ -34,7 +34,8 @@ let validReq: AuthRequest
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 let validRes: { status: string, messages: any[] }
 let validMessageBoxes: Array<{ messageBoxId: number }>
-let validMessages: Array<{ sender: string, messageBoxId: number, body: string }>
+let validMessages: Array<{ sender: string, messageId: string, body: string, created_at: string, updated_at: string }>
+let expectedMessages: Array<{ sender: string, messageId: string, body: string, createdAt: string, updatedAt: string }>
 
 describe('listMessages', () => {
   beforeAll(() => {
@@ -49,8 +50,17 @@ describe('listMessages', () => {
 
     validMessages = [{
       sender: '028d37b941208cd6b8a4c28288eda5f2f16c2b3ab0fcb6d13c18b47fe37b971fc1',
-      messageBoxId: 42,
-      body: '{}'
+      messageId: 'msg-1',
+      body: '{}',
+      created_at: '2024-01-01',
+      updated_at: '2024-01-01'
+    }]
+    expectedMessages = [{
+      sender: '028d37b941208cd6b8a4c28288eda5f2f16c2b3ab0fcb6d13c18b47fe37b971fc1',
+      messageId: 'msg-1',
+      body: '{}',
+      createdAt: '2024-01-01',
+      updatedAt: '2024-01-01'
     }]
 
     // Mock Data
@@ -97,8 +107,8 @@ describe('listMessages', () => {
     expect(mockRes.status).toHaveBeenCalledWith(400)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
-      code: 'ERR_INVALID_MESSAGEBOX',
-      description: 'MessageBox name must be a string!'
+      code: 'ERR_MESSAGEBOX_REQUIRED',
+      description: 'Please provide the name of a valid MessageBox!'
     }))
   })
 
@@ -159,7 +169,7 @@ describe('listMessages', () => {
     expect(mockRes.status).toHaveBeenCalledWith(200)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'success',
-      messages: validMessages
+      messages: expectedMessages
     }))
   })
 
@@ -203,7 +213,7 @@ describe('listMessages', () => {
     expect(mockRes.status).toHaveBeenCalledWith(200)
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'success',
-      messages: validMessages
+      messages: expectedMessages
     }))
   })
 

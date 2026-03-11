@@ -4,6 +4,8 @@ export default {
   setupFilesAfterEnv: ['./jest.setup.mjs'],
   // Use Node environment
   testEnvironment: 'node',
+  // Force exit after tests complete (module-level knex pools stay open)
+  forceExit: true,
   
   // Transform TypeScript files
   transform: {

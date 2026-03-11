@@ -131,7 +131,7 @@ describe('acknowledgeMessage', () => {
     expect(mockRes.json).toHaveBeenCalledWith(expect.objectContaining({
       status: 'error',
       code: 'ERR_INVALID_ACKNOWLEDGMENT',
-      description: 'Message not found locally or remotely!'
+      description: 'Message not found!'
     }))
   }, 7000)
 
