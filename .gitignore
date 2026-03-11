@@ -1,4 +1,5 @@
 node_modules
+.idea
 data/messagebox-backend-mysql-data
 data/database.sqlite
 .env
