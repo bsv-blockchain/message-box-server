@@ -9,11 +9,20 @@ dotenv.config()
 let firebaseApp: App | null = null
 
 /**
- * Initialize Firebase Admin SDK
+ * Initialize Firebase Admin SDK.
+ * Returns null (and logs a warning) when ENABLE_FIREBASE is not 'true',
+ * or when FIREBASE_PROJECT_ID is absent, so the server can run without Firebase.
  */
-export function initializeFirebase(): App {
+export function initializeFirebase(): App | null {
+  const enableFirebase = process.env.ENABLE_FIREBASE
+
+  if (enableFirebase !== 'true') {
+    console.log(`Firebase is disabled (ENABLE_FIREBASE=${enableFirebase ?? 'unset'}). Skipping initialization.`)
+    return null
+  }
+
   if (firebaseApp != null) {
-    console.log('🔥 Firebase already initialized')
+    console.log('Firebase already initialized')
     return firebaseApp
   }
 
@@ -84,13 +93,11 @@ export function initializeFirebase(): App {
 }
 
 /**
- * Get Firebase Messaging instance
+ * Get Firebase Messaging instance, or null if Firebase is not initialized.
  */
-export function getFirebaseMessaging(): Messaging {
+export function getFirebaseMessaging(): Messaging | null {
   if (firebaseApp == null) {
-    throw new Error(
-      'Firebase not initialized. Call initializeFirebase() first.'
-    )
+    return null
   }
   return getMessaging(firebaseApp)
 }
@@ -129,6 +136,10 @@ export async function sendNotification(
 ): Promise<SendNotificationResult> {
   try {
     const messaging = getFirebaseMessaging()
+
+    if (messaging == null) {
+      throw new Error('Firebase Messaging is not initialized (ENABLE_FIREBASE != true)')
+    }
 
     const message: Message = {
       token: fcmToken,

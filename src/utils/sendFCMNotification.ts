@@ -69,7 +69,12 @@ export async function sendFCMNotification(
       try {
         Logger.log(`[DEBUG] Sending to ${device.platform ?? 'unknown'} device: ${device.device_id ?? 'unknown'}`)
 
-        await getFirebaseMessaging().send({
+        const messaging = getFirebaseMessaging()
+        if (messaging == null) {
+          return { success: false, token: device.fcm_token, error: 'Firebase Messaging not initialized (ENABLE_FIREBASE != true)' }
+        }
+
+        await messaging.send({
           token: device.fcm_token,
           notification: {
             title: payload.title,

@@ -59,7 +59,7 @@ if (SERVER_PRIVATE_KEY === undefined || SERVER_PRIVATE_KEY === null || SERVER_PR
   throw new Error('SERVER_PRIVATE_KEY is not defined in the environment variables.')
 }
 
-// Initialize Firebase Admin
+// Initialize Firebase Admin (only when ENABLE_FIREBASE=true)
 initializeFirebase()
 
 // Create HTTP server
