@@ -1,18 +1,12 @@
-# Use Node 20 Alpine base
-FROM node:20-alpine
+# ---- Build stage ----
+FROM node:20-alpine AS builder
 
-# Install necessary packages (nginx, openssl, etc.)
-RUN echo "http://dl-4.alpinelinux.org/alpine/v3.3/main" >> /etc/apk/repositories && \
-    apk add --no-cache --update nginx && \
-    chown -R nginx:www-data /var/lib/nginx
-
-# Set working directory
 WORKDIR /app
 
 # Copy package files first for better layer caching
 COPY package*.json ./
 
-# Install dependencies (including dotenv!)
+# Install all dependencies (including dev deps for build)
 RUN npm install
 
 # Install global tools (optional, depends on how you're running knex)
@@ -25,9 +19,27 @@ COPY . .
 RUN npm run build
 
 # Copy compiled knexfile.js to /app root (where imports like '../../knexfile.js' expect it)
-RUN echo "Copying knexfile.js to /app..." \
- && ls -l out/knexfile.js \
- && cp out/knexfile.js ./knexfile.js
+RUN cp out/knexfile.js ./knexfile.js
+
+# ---- Production stage ----
+FROM node:20-alpine
+
+# Ensure all OS packages are up to date (patch CVEs in base image)
+RUN apk upgrade --no-cache
+
+# Install nginx
+RUN apk add --no-cache nginx && \
+    chown -R nginx:www-data /var/lib/nginx
+
+WORKDIR /app
+
+# Copy package files and install production deps only
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+# Copy built output from builder
+COPY --from=builder /app/out ./out
+COPY --from=builder /app/knexfile.js ./knexfile.js
 
 # Copy nginx config
 COPY ./nginx.conf /etc/nginx/nginx.conf
